@@ -127,6 +127,15 @@ Edit `samconfig.toml` with your repo, folder, and email, then:
 sam build && sam deploy --guided
 ```
 
+To provision the stack *before* the secrets are in place, deploy paused and
+flip it on afterwards:
+
+```bash
+sam deploy --parameter-overrides ScheduleState=DISABLED DryRun=true
+# ... populate the SSM parameters, confirm a dry run looks right ...
+sam deploy --parameter-overrides ScheduleState=ENABLED DryRun=false
+```
+
 ### 4. Verify
 
 Write a page in the watched folder, sync the tablet, and wait one interval:
@@ -153,6 +162,7 @@ Every knob is a deploy-time parameter — changing one is a redeploy, not a code
 | `AiModelId` | `us.anthropic.claude-haiku-4-5-...` | See the inference-profile note below |
 | `BatchMode` | `none` | `none`, `bedrock-batch`, `direct-batch` |
 | `PollSchedule` | `cron(0/15 6-23 * * ? *)` | Skips overnight polls |
+| `ScheduleState` | `ENABLED` | Deploy `DISABLED` to provision before secrets exist |
 | `MaxPagesPerRun` | `20` | Bounds cost and the 5-minute timeout |
 | `RenderWidth` | `1400` | Vision cost scales with image size |
 | `BlankPageThreshold` | `3` | Strokes below this → skipped before any model call |
