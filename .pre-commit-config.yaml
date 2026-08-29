@@ -1,0 +1,32 @@
+# Blocks a secret before it becomes a commit. Install once per clone:
+#   pip install pre-commit && pre-commit install
+# Hooks are opt-in per clone, so CI runs the same scanners on every PR.
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.0
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: '^(\.secrets\.baseline|tests/fixtures/.*\.rm)$'
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.1
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        exclude: '^template\.yaml$'   # CloudFormation intrinsics are not plain YAML
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-merge-conflict

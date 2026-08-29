@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check functions/ tests/
+      - name: Type check
+        run: mypy functions/
+      - name: Unit tests
+        run: pytest tests/unit -v --cov=functions/rmsync --cov-report=term
+      - name: Cost guardrails
+        # These must never appear: each one would add a recurring bill far
+        # larger than everything else in the stack combined.
+        run: |
+          set -e
+          for pattern in VpcConfig SecretsManager "AWS::ECS" NatGateway; do
+            if grep -i "$pattern" template.yaml; then
+              echo "::error::Forbidden pattern '$pattern' found in template.yaml"
+              exit 1
+            fi
+          done
+          echo "No forbidden cost patterns found."
+
+  template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install cfn-lint
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - run: sam validate --lint --region us-east-1
+      - run: cfn-lint template.yaml
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # scan full history, not just the tip
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: detect-secrets
+        run: |
+          pip install detect-secrets
+          detect-secrets scan --baseline .secrets.baseline
+          git diff --exit-code .secrets.baseline \
+            || (echo "::error::detect-secrets found new findings"; exit 1)

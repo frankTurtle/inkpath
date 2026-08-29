@@ -1,0 +1,6 @@
+# Pinned exactly. reMarkable's cloud API is reverse-engineered and unversioned;
+# a surprise dependency bump is a plausible cause of a silent sync break.
+rmscene==0.8.0
+Pillow==12.3.0
+requests==2.34.2
+PyYAML==6.0.3

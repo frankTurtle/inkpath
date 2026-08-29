@@ -1,0 +1,42 @@
+# Copy to samconfig.toml (gitignored) and fill in your real values.
+#   cp samconfig.toml.example samconfig.toml
+#
+# samconfig.toml is gitignored because parameter_overrides carries values that
+# identify you: your vault repo name and your reMarkable folder/notebook names.
+
+version = 0.1
+
+[default.global.parameters]
+stack_name = "inkpath"
+region = "us-east-1"
+profile = "your-aws-profile"
+
+[default.build.parameters]
+cached = true
+parallel = true
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true
+resolve_s3 = true
+parameter_overrides = """
+GitHubRepo=your-user/your-private-vault \
+GitHubBranch=main \
+VaultNotePath=Inbox/reMarkable \
+WatchFolder=YourReadingFolder \
+AiProvider=bedrock \
+AiModelId=us.anthropic.claude-haiku-4-5-20251001-v1:0 \
+BatchMode=none \
+PollSchedule='cron(0/15 6-23 * * ? *)' \
+MaxPagesPerRun=20 \
+AlertEmail=you@example.com \
+"""
+
+[dryrun.deploy.parameters]
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+parameter_overrides = """
+GitHubRepo=your-user/your-private-vault \
+WatchFolder=YourReadingFolder \
+DryRun=true \
+"""

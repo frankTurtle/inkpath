@@ -1,0 +1,429 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  inkpath - reMarkable Cloud to Obsidian (GitHub) sync pipeline.
+  Fully on-demand: no VPC, no NAT, no Fargate, no provisioned capacity.
+  Steady-state infrastructure cost is effectively $0; only model inference varies.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: {default: "Vault (GitHub) target"}
+        Parameters: [GitHubRepo, GitHubBranch, VaultNotePath]
+      - Label: {default: "reMarkable scoping"}
+        Parameters: [WatchFolder, WatchFolderId, IncludeNotebooks, ExcludeNotebooks]
+      - Label: {default: "AI provider"}
+        Parameters: [AiProvider, AiModelId, BedrockModelArnPattern]
+      - Label: {default: "Batch inference (optional, ~50% cheaper, adds latency)"}
+        Parameters: [BatchMode, BatchMinRecords, BatchMaxWaitDays]
+      - Label: {default: "Run behaviour and cost guardrails"}
+        Parameters: [PollSchedule, MaxPagesPerRun, RenderWidth, BlankPageThreshold, MinTextLength, DryRun, MonthlyBudgetUsd, AlertEmail]
+
+Parameters:
+  # ---------------------------------------------------------------- vault ----
+  GitHubRepo:
+    Type: String
+    Default: "your-github-user/your-private-vault"
+    Description: >
+      owner/repo of the PRIVATE Obsidian vault repository. Supply the real value
+      at deploy time via samconfig.toml (gitignored) - never commit it here.
+    AllowedPattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+  GitHubBranch:
+    Type: String
+    Default: main
+  VaultNotePath:
+    Type: String
+    Default: "Inbox/reMarkable"
+    Description: Path inside the vault repo where notes are written.
+
+  # ------------------------------------------------------------- scoping ----
+  WatchFolder:
+    Type: String
+    Default: "MyReadingNotes"
+    Description: >
+      reMarkable folder NAME to watch (case-insensitive). Placeholder by design.
+      Names are not unique in reMarkable - prefer WatchFolderId if you have
+      duplicate folder names.
+  WatchFolderId:
+    Type: String
+    Default: ""
+    Description: >
+      Optional reMarkable folder UUID. If set, takes precedence over WatchFolder
+      and removes all ambiguity from duplicate folder names.
+  IncludeNotebooks:
+    Type: String
+    Default: ""
+    Description: Comma-separated notebook names to include. Mutually exclusive with ExcludeNotebooks.
+  ExcludeNotebooks:
+    Type: String
+    Default: ""
+    Description: Comma-separated notebook names to exclude. Mutually exclusive with IncludeNotebooks.
+
+  # ----------------------------------------------------------- ai provider ----
+  AiProvider:
+    Type: String
+    Default: bedrock
+    AllowedValues: [bedrock, direct]
+  AiModelId:
+    Type: String
+    # NOTE: verified available in us-east-1 at authoring time (2026-08-29).
+    # Claude 4.5+ models are INFERENCE_PROFILE only - the bare foundation-model
+    # id will NOT invoke. Use the "us." (or "global.") inference-profile id.
+    Default: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+    Description: >
+      Bedrock model or inference-profile id. Confirm it supports IMAGE input in
+      your region before deploying (aws bedrock list-foundation-models).
+  BedrockModelArnPattern:
+    Type: String
+    Default: "arn:aws:bedrock:*::foundation-model/*"
+    Description: >
+      Foundation-model ARN pattern the Lambda may invoke. Defaults to a wildcard
+      because AiModelId is a deploy-time parameter and inference profiles fan out
+      across regions. Tighten to a specific model ARN if you do not swap models.
+
+  # ------------------------------------------------------------- batching ----
+  BatchMode:
+    Type: String
+    Default: none
+    AllowedValues: [none, bedrock-batch, direct-batch]
+  BatchMinRecords:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    Description: Bedrock's hard minimum per batch job. Ignored for direct-batch.
+  BatchMaxWaitDays:
+    Type: Number
+    Default: 14
+    MinValue: 1
+    Description: Force-flush queued pages to the synchronous path past this age.
+
+  # ------------------------------------------------------------ behaviour ----
+  PollSchedule:
+    Type: String
+    Default: "cron(0/15 6-23 * * ? *)"
+    Description: Skips overnight polls you would never use; keeps logs readable.
+  MaxPagesPerRun:
+    Type: Number
+    Default: 20
+    MinValue: 1
+    Description: Bounds runaway cost and the 5-minute timeout.
+  RenderWidth:
+    Type: Number
+    Default: 1400
+    Description: Minimum legible render width. Vision cost scales with image size.
+  BlankPageThreshold:
+    Type: Number
+    Default: 3
+    Description: Pages with fewer strokes than this are skipped before any model call.
+  MinTextLength:
+    Type: Number
+    Default: 20
+    Description: Below this, tag needs-review and attach the PNG instead of an empty note.
+  DryRun:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+  MonthlyBudgetUsd:
+    Type: Number
+    Default: 5
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Email for budget and error alarms. Leave blank to skip alerting.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+  UsesBedrock: !Equals [!Ref AiProvider, bedrock]
+  UsesBedrockBatch: !Equals [!Ref BatchMode, bedrock-batch]
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    Timeout: 300
+    MemorySize: 1024
+
+Resources:
+  # ------------------------------------------------------------- storage ----
+  StateBucket:
+    Type: AWS::S3::Bucket
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub "inkpath-state-${AWS::AccountId}-${AWS::Region}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireStagedRenders
+            Status: Enabled
+            Prefix: staging/
+            ExpirationInDays: 7
+          - Id: ExpireBatchIo
+            Status: Enabled
+            Prefix: batch/
+            ExpirationInDays: 30
+          - Id: ExpireOldStateVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+
+  # ------------------------------------------------------------ function ----
+  RmSyncFunction:
+    Type: AWS::Serverless::Function
+    # NOTE: this function is deliberately NOT attached to any VPC. A Lambda in a
+    # private subnet needs a NAT gateway (~$32/mo) to reach the internet, which
+    # would cost more than every other component in this stack combined. It only
+    # calls public APIs, so it must stay out.
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-rm-sync"
+      CodeUri: functions/rmsync/
+      Handler: app.lambda_handler
+      Description: Polls reMarkable Cloud, OCRs+tags pages, commits Markdown to the vault repo.
+      Layers: [!Ref DepsLayer]
+      Environment:
+        Variables:
+          STATE_BUCKET: !Ref StateBucket
+          GITHUB_REPO: !Ref GitHubRepo
+          GITHUB_BRANCH: !Ref GitHubBranch
+          VAULT_NOTE_PATH: !Ref VaultNotePath
+          WATCH_FOLDER: !Ref WatchFolder
+          WATCH_FOLDER_ID: !Ref WatchFolderId
+          INCLUDE_NOTEBOOKS: !Ref IncludeNotebooks
+          EXCLUDE_NOTEBOOKS: !Ref ExcludeNotebooks
+          AI_PROVIDER: !Ref AiProvider
+          AI_MODEL_ID: !Ref AiModelId
+          BATCH_MODE: !Ref BatchMode
+          BATCH_MIN_RECORDS: !Ref BatchMinRecords
+          BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays
+          MAX_PAGES_PER_RUN: !Ref MaxPagesPerRun
+          RENDER_WIDTH: !Ref RenderWidth
+          BLANK_PAGE_THRESHOLD: !Ref BlankPageThreshold
+          MIN_TEXT_LENGTH: !Ref MinTextLength
+          DRY_RUN: !Ref DryRun
+          SSM_PREFIX: /rmsync
+          BATCH_ROLE_ARN: !If [UsesBedrockBatch, !GetAtt BedrockBatchRole.Arn, ""]
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Sid: StateAndStaging
+              Effect: Allow
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+              Resource: !Sub "${StateBucket.Arn}/*"
+            - Sid: ListStateBucket
+              Effect: Allow
+              Action: [s3:ListBucket]
+              Resource: !GetAtt StateBucket.Arn
+            - Sid: ReadSecrets
+              Effect: Allow
+              Action: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath]
+              Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/rmsync/*"
+            - Sid: DecryptSsm
+              Effect: Allow
+              Action: [kms:Decrypt]
+              Resource: !Sub "arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm"
+      Tags:
+        Project: inkpath
+
+  # Bedrock invoke is granted separately so a non-Bedrock deploy carries no
+  # Bedrock permissions at all.
+  BedrockInvokePolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: UsesBedrock
+    Properties:
+      RoleName: !Ref RmSyncFunctionRole
+      PolicyName: BedrockInvoke
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # CRITICAL: invoking via an inference profile requires BOTH the profile
+          # ARN and the underlying foundation-model ARNs in EVERY region the
+          # profile spans. Granting only one of the two fails at invoke time with
+          # AccessDenied - never at deploy time.
+          - Sid: InvokeFoundationModels
+            Effect: Allow
+            Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+            Resource: !Ref BedrockModelArnPattern
+          - Sid: InvokeInferenceProfiles
+            Effect: Allow
+            Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+            Resource:
+              - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*"
+              - !Sub "arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:application-inference-profile/*"
+
+  BedrockBatchPolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: UsesBedrockBatch
+    Properties:
+      RoleName: !Ref RmSyncFunctionRole
+      PolicyName: BedrockBatch
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:CreateModelInvocationJob
+              - bedrock:GetModelInvocationJob
+              - bedrock:ListModelInvocationJobs
+              - bedrock:StopModelInvocationJob
+            Resource: "*"
+          - Effect: Allow
+            Action: [iam:PassRole]
+            Resource: !GetAtt BedrockBatchRole.Arn
+
+  # Service role Bedrock assumes to read batch input / write batch output.
+  BedrockBatchRole:
+    Type: AWS::IAM::Role
+    Condition: UsesBedrockBatch
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: bedrock.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {"aws:SourceAccount": !Ref AWS::AccountId}
+      Policies:
+        - PolicyName: BatchIo
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+                Resource:
+                  - !GetAtt StateBucket.Arn
+                  - !Sub "${StateBucket.Arn}/batch/*"
+
+  # CRITICAL: set retention explicitly. CloudWatch Logs default to never-expire
+  # and accrue cost silently forever.
+  RmSyncLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}-rm-sync"
+      RetentionInDays: 14
+
+  DepsLayer:
+    Type: AWS::Serverless::LayerVersion
+    Metadata:
+      BuildMethod: python3.13
+      BuildArchitecture: arm64
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-deps"
+      Description: rmscene, Pillow, requests, PyYAML
+      ContentUri: layers/deps/
+      CompatibleRuntimes: [python3.13]
+      CompatibleArchitectures: [arm64]
+      RetentionPolicy: Delete
+
+  # ------------------------------------------------------------ schedule ----
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: {Service: scheduler.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: {"aws:SourceAccount": !Ref AWS::AccountId}
+      Policies:
+        - PolicyName: InvokeRmSync
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt RmSyncFunction.Arn
+
+  PollSchedulerSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub "${AWS::StackName}-poll"
+      Description: On-demand poll of reMarkable Cloud. Bills nothing while idle.
+      ScheduleExpression: !Ref PollSchedule
+      FlexibleTimeWindow: {Mode: "OFF"}
+      State: ENABLED
+      Target:
+        Arn: !GetAtt RmSyncFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        Input: '{"source":"aws.scheduler","detail-type":"Scheduled Event"}'
+        RetryPolicy:
+          MaximumRetryAttempts: 2
+          MaximumEventAgeInSeconds: 3600
+
+  # ------------------------------------------------------ cost guardrails ----
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlertEmail
+    Properties:
+      TopicName: !Sub "${AWS::StackName}-alerts"
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    Condition: HasAlertEmail
+    Properties:
+      Budget:
+        BudgetName: !Sub "${AWS::StackName}-monthly"
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: !Ref MonthlyBudgetUsd
+          Unit: USD
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - {SubscriptionType: EMAIL, Address: !Ref AlertEmail}
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - {SubscriptionType: EMAIL, Address: !Ref AlertEmail}
+
+  ErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Condition: HasAlertEmail
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-errors"
+      AlarmDescription: More than 3 rm-sync errors in an hour.
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref RmSyncFunction}
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlertTopic]
+
+Outputs:
+  FunctionName:
+    Description: Lambda function name (for aws logs tail).
+    Value: !Ref RmSyncFunction
+  StateBucketName:
+    Description: S3 bucket holding state.json and staged renders.
+    Value: !Ref StateBucket
+  LogGroupName:
+    Value: !Ref RmSyncLogGroup
+  RequiredSsmParameters:
+    Description: Populate these out-of-band before the first run.
+    Value: "/rmsync/remarkable-token, /rmsync/github-pat, (/rmsync/ai-api-key only if AiProvider=direct)"

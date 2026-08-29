@@ -1,0 +1,33 @@
+# --- Secrets & local config (PRP: Open Source Repository Hygiene) ---
+samconfig.toml
+.env
+*.local.yaml
+*.local.yml
+.secrets.baseline.local
+
+# --- SAM / build artifacts ---
+.aws-sam/
+packaged.yaml
+layer-build/
+
+# --- Real reMarkable fixtures ---
+# Only synthetic fixtures may be committed. Real .rm files contain personal notes.
+tests/fixtures/*.rm
+!tests/fixtures/synthetic_*.rm
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/

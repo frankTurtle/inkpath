@@ -1,0 +1,5 @@
+{
+  "source": "aws.scheduler",
+  "detail-type": "Scheduled Event",
+  "detail": {}
+}

@@ -1,0 +1,11 @@
+pytest==9.0.1
+pytest-cov==7.0.0
+ruff==0.15.1
+mypy==1.19.1
+boto3-stubs[bedrock-runtime,s3,ssm]==1.42.4
+types-requests==2.32.4.20250913
+types-PyYAML==6.0.12.20250915
+detect-secrets==1.5.0
+# Runtime deps, so unit tests can import the function package locally.
+-r layers/deps/requirements.txt
+boto3==1.42.4
