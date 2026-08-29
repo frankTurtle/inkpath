@@ -98,6 +98,14 @@ Parameters:
     Description: Force-flush queued pages to the synchronous path past this age.
 
   # ------------------------------------------------------------ behaviour ----
+  ScheduleState:
+    Type: String
+    Default: ENABLED
+    AllowedValues: [ENABLED, DISABLED]
+    Description: >
+      Deploy as DISABLED to provision the stack before the SSM secrets exist,
+      then flip to ENABLED once they are populated. A schedule enabled without
+      secrets simply fails loudly every interval.
   PollSchedule:
     Type: String
     Default: "cron(0/15 6-23 * * ? *)"
@@ -184,8 +192,12 @@ Resources:
     # calls public APIs, so it must stay out.
     Properties:
       FunctionName: !Sub "${AWS::StackName}-rm-sync"
-      CodeUri: functions/rmsync/
-      Handler: app.lambda_handler
+      # CodeUri is the parent directory so `rmsync` ships as a real package.
+      # Pointing it at functions/rmsync/ would flatten the modules to the
+      # archive root, and app.py's relative imports would have no parent
+      # package to resolve against.
+      CodeUri: functions/
+      Handler: rmsync.app.lambda_handler
       Description: Polls reMarkable Cloud, OCRs+tags pages, commits Markdown to the vault repo.
       Layers: [!Ref DepsLayer]
       Environment:
@@ -351,7 +363,7 @@ Resources:
       Description: On-demand poll of reMarkable Cloud. Bills nothing while idle.
       ScheduleExpression: !Ref PollSchedule
       FlexibleTimeWindow: {Mode: "OFF"}
-      State: ENABLED
+      State: !Ref ScheduleState
       Target:
         Arn: !GetAtt RmSyncFunction.Arn
         RoleArn: !GetAtt SchedulerRole.Arn
