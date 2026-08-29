@@ -44,12 +44,23 @@ class BedrockProvider:
         if not model_id:
             raise ValueError("AiModelId is required for the bedrock provider")
         self.model_id = model_id
-        self._client = client or boto3.client(
-            "bedrock-runtime",
-            config=BotoConfig(
-                read_timeout=120, connect_timeout=10, retries={"max_attempts": 3}
-            ),
-        )
+        self._explicit_client = client
+
+    @property
+    def _client(self):
+        """Built on first use, not at construction.
+
+        Constructing the provider must not require AWS credentials or a region -
+        only actually calling it should.
+        """
+        if self._explicit_client is None:
+            self._explicit_client = boto3.client(
+                "bedrock-runtime",
+                config=BotoConfig(
+                    read_timeout=120, connect_timeout=10, retries={"max_attempts": 3}
+                ),
+            )
+        return self._explicit_client
 
     def _converse(self, image_bytes: bytes, prompt: str) -> tuple[str, int, int]:
         kwargs: dict = {

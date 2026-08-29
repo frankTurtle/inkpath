@@ -151,3 +151,19 @@ def test_get_user_token_caches_and_reports_revocation(monkeypatch):
     monkeypatch.setattr(auth.requests, "post", lambda *a, **kw: Bad())
     with pytest.raises(auth.AuthError, match="revoked"):
         auth.get_user_token("devtok")
+
+
+def test_bedrock_provider_construction_needs_no_aws_credentials(monkeypatch):
+    """Constructing a provider must not require a region or credentials.
+
+    Only an actual call should. Regression test: eager boto3 client creation
+    made the provider registry unusable anywhere AWS was not configured.
+    """
+    from rmsync.providers.bedrock import BedrockProvider
+
+    for var in ("AWS_DEFAULT_REGION", "AWS_REGION", "AWS_PROFILE"):
+        monkeypatch.delenv(var, raising=False)
+
+    p = BedrockProvider("us.anthropic.claude-haiku-4-5-20251001-v1:0")
+    assert p.model_id.startswith("us.")
+    assert p._explicit_client is None      # nothing built yet
