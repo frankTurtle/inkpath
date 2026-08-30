@@ -73,7 +73,7 @@ def sanitize_tags(raw_tags: list[str] | None) -> list[str]:
     return seen
 
 
-LINK_MODES = {"related", "inline", "both"}
+LINK_MODES = {"none", "related", "inline", "both"}
 
 _INLINE_RULE = """
   INLINE LINKS: inside "text", wrap the page's key concepts in [[double
@@ -98,6 +98,14 @@ def build_prompt(
     vocab = ", ".join(existing_tags[-80:]) if existing_tags else "(none yet)"
     titles = ", ".join(f'"{t}"' for t in (existing_titles or [])[-60:]) or "(none yet)"
     inline_rule = _INLINE_RULE if link_mode in ("inline", "both") else ""
+    no_links = link_mode == "none"
+    links_rule = "\n           Always return [] for this page." if no_links else ""
+    no_link_rule = (
+        "\n           Do NOT add [[brackets]] to anything the writer did not "
+           "bracket themselves."
+        if no_links
+        else ""
+    )
     return f"""You are transcribing one handwritten page from a reMarkable tablet into an Obsidian note.
 
 Return ONLY a single JSON object. No preamble, no explanation, no markdown code fences.
@@ -106,14 +114,14 @@ The JSON object must have exactly these keys:
   "text":  string. The transcribed handwriting as Markdown. Preserve list and
            heading structure. Use "" if the page has no legible handwriting.
            If the writer drew [[double brackets]] around anything by hand,
-           keep them exactly - that is a deliberate Obsidian link.{inline_rule}
+           keep them exactly - that is a deliberate Obsidian link.{inline_rule}{no_link_rule}
   "tags":  array of 2-5 short topical tags, lowercase, no spaces, no "#".
            STRONGLY prefer reusing tags from the existing vocabulary below over
            inventing near-duplicates.
   "title": string. A short, specific note title derived from the content.
   "links": array of up to 3 existing note titles this page genuinely relates to,
            for [[wikilinks]]. Use [] if none clearly apply. Only use titles from
-           the existing notes list; never invent one.
+           the existing notes list; never invent one.{links_rule}
 
 Existing tag vocabulary: {vocab}
 Existing note titles: {titles}

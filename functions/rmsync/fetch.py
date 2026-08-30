@@ -28,6 +28,7 @@ class PageRef:
     # Vault directory this page's note belongs in, decided by the watch
     # folder it came from (see routes.py).
     vault_dir: str = ""
+    link_mode: str = ""
     data: bytes = field(default=b"", repr=False)
 
     def __post_init__(self) -> None:
@@ -138,6 +139,7 @@ def diff_pages(
 
         route = routes.get(scope_map.get(doc.parent, ""))
         dest = vault_dir(doc.visible_name, route=route, default_path=cfg.vault_note_path)
+        page_link_mode = (route.link_mode if route and route.link_mode else cfg.link_mode)
 
         entries = client.get_entries(doc.id, doc.hash)
         content = client.get_content(doc.id, entries)
@@ -179,6 +181,7 @@ def diff_pages(
                     page_index=index,
                     file_name=entry.id,
                     vault_dir=dest,
+                    link_mode=page_link_mode,
                 )
             )
 

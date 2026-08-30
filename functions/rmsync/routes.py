@@ -6,14 +6,19 @@ grouped once they get there.
 
 Spec (env var VAULT_ROUTES), entries separated by ";"::
 
-    <watchFolderId>=<vaultPath>[|<mode>]
+    <watchFolderId>=<vaultPath>[|<mode>[|<linkMode>]]
 
-    ba5dfa9f-...=Book Notes;d18f316e-...=Journals|year
+    ba5dfa9f-...=Book Notes;d18f316e-...=Journals|year|none
 
 Modes:
     notebook  (default)  <vaultPath>/<notebook name>/<title>.md
     year                 <vaultPath>/<year from notebook name>/<title>.md
     flat                 <vaultPath>/<title>.md
+
+The optional link mode overrides the global LinkMode for that folder. Journals
+are chronological rather than conceptual: linking their prose mints a stub note
+for every stray phrase and buries the graph, so "none" suits them even when
+book notes want full linking.
 """
 
 from __future__ import annotations
@@ -29,6 +34,8 @@ MODE_YEAR = "year"
 MODE_FLAT = "flat"
 MODES = {MODE_NOTEBOOK, MODE_YEAR, MODE_FLAT}
 
+LINK_MODES = {"none", "related", "inline", "both"}
+
 _YEAR_RE = re.compile(r"(19|20)\d{2}")
 
 
@@ -36,6 +43,7 @@ _YEAR_RE = re.compile(r"(19|20)\d{2}")
 class Route:
     vault_path: str
     mode: str = MODE_NOTEBOOK
+    link_mode: str | None = None   # None = inherit the global LinkMode
 
 
 def parse_routes(raw: str) -> dict[str, Route]:
@@ -49,12 +57,17 @@ def parse_routes(raw: str) -> dict[str, Route]:
             logger.warning("Ignoring malformed route %r (expected id=path)", entry)
             continue
         folder_id, _, dest = entry.partition("=")
-        path, _, mode = dest.partition("|")
-        mode = (mode or MODE_NOTEBOOK).strip().lower()
+        parts = [p.strip() for p in dest.split("|")]
+        path = parts[0]
+        mode = (parts[1] if len(parts) > 1 and parts[1] else MODE_NOTEBOOK).lower()
+        link_mode = (parts[2].lower() if len(parts) > 2 and parts[2] else None)
         if mode not in MODES:
             logger.warning("Unknown route mode %r for %s; using %s", mode, folder_id, MODE_NOTEBOOK)
             mode = MODE_NOTEBOOK
-        routes[folder_id.strip()] = Route(path.strip().strip("/"), mode)
+        if link_mode is not None and link_mode not in LINK_MODES:
+            logger.warning("Unknown route link mode %r for %s; inheriting", link_mode, folder_id)
+            link_mode = None
+        routes[folder_id.strip()] = Route(path.strip().strip("/"), mode, link_mode)
     return routes
 
 

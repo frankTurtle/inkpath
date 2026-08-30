@@ -143,6 +143,7 @@ class Runner:
         }
         self.committed_notes: list[str] = []
         self._vault: GitHubVault | None = None
+        self._providers: dict[str, providers.VisionProvider] = {}
         self._provider: providers.VisionProvider | None = None
 
     # ------------------------------------------------------------ lazy deps --
@@ -156,6 +157,31 @@ class Runner:
                 self.cfg.github_branch,
             )
         return self._vault
+
+    def provider_for(self, link_mode: str = "") -> providers.VisionProvider:
+        """Provider bound to a specific link mode.
+
+        The link mode is baked into the prompt, so a run that mixes routes -
+        book notes linking, journals not - needs one provider per mode. They are
+        cached per invocation; construction is cheap but not free.
+        """
+        mode = link_mode or self.cfg.link_mode
+        if mode not in self._providers:
+            if self._provider is not None and mode == self.cfg.link_mode:
+                # Honour a provider injected by tests.
+                self._providers[mode] = self._provider
+            else:
+                api_key = ""
+                if self.cfg.ai_provider == "direct":
+                    api_key = get_secret("ai-api-key", prefix=self.cfg.ssm_prefix)
+                self._providers[mode] = providers.get(
+                    self.cfg.ai_provider,
+                    self.cfg.ai_model_id,
+                    api_key=api_key,
+                    base_url=self.cfg.ai_base_url,
+                    link_mode=mode,
+                )
+        return self._providers[mode]
 
     @property
     def provider(self) -> providers.VisionProvider:
@@ -266,7 +292,7 @@ class Runner:
                 attachment = sanitize_path_component(
                     f"{page.notebook} p{page.page_index + 1}", fallback="page"
                 )
-                result = self.provider.extract_and_tag(
+                result = self.provider_for(page.link_mode).extract_and_tag(
                     png, st.get("tagVocabulary", []), st.get("noteTitles", [])
                 )
                 self.stats["modelCalls"] += 1
@@ -277,7 +303,7 @@ class Runner:
                     page_index=page.page_index,
                     min_text_length=self.cfg.min_text_length,
                     attachment_name=f"{attachment}.png",
-                    link_mode=self.cfg.link_mode,
+                    link_mode=page.link_mode or self.cfg.link_mode,
                     known_titles=st.get("noteTitles", []),
                 )
                 self.stats["inputTokens"] += note.input_tokens
@@ -433,7 +459,7 @@ class Runner:
                 )
                 continue
             try:
-                result = self.provider.extract_and_tag(
+                result = self.provider_for(record.get("link_mode", "")).extract_and_tag(
                     png, st.get("tagVocabulary", []), st.get("noteTitles", [])
                 )
                 self.stats["modelCalls"] += 1

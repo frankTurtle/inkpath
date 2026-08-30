@@ -584,3 +584,22 @@ def test_related_drops_junk_targets():
         doc_id="d", notebook="N", page_index=0, link_mode="both",
     )
     assert "[[P.5]]" not in note.body and "[[Real Note]]" in note.body
+
+
+def test_none_link_mode_suppresses_all_linking():
+    """Journals are chronological; linking their prose buries the graph."""
+    note = compose_note(
+        ProviderResult(text="Talked to Samantha about deep work today, at length.",
+                       tags=["t"], title="Journal Entry", links=["Some Note"]),
+        doc_id="d", notebook="Journal 2023", page_index=0,
+        link_mode="none", known_titles=["Some Note", "Deep work"],
+    )
+    assert "[[" not in note.body
+
+
+def test_none_mode_prompt_forbids_new_brackets():
+    from rmsync.providers.base import build_prompt
+
+    p = build_prompt([], ["X"], "none")
+    assert "Do NOT add" in p and "Always return []" in p
+    assert "INLINE LINKS" not in p

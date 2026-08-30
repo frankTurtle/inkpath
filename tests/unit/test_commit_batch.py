@@ -364,3 +364,24 @@ def test_vault_dir_unrouted_folder_uses_default():
     assert vault_dir("Walden", route=None, default_path="Inbox/reMarkable") == (
         "Inbox/reMarkable/Walden"
     )
+
+
+def test_route_can_override_link_mode():
+    from rmsync.routes import parse_routes
+
+    r = parse_routes("aaa=Book Notes;bbb=Journals|year|none")
+    assert r["aaa"].link_mode is None      # inherits the global setting
+    assert r["bbb"].link_mode == "none"
+
+
+def test_route_ignores_unknown_link_mode():
+    from rmsync.routes import parse_routes
+
+    assert parse_routes("bbb=J|year|nonsense")["bbb"].link_mode is None
+
+
+def test_route_link_mode_without_grouping_mode():
+    from rmsync.routes import parse_routes
+
+    r = parse_routes("bbb=Journals||none")
+    assert r["bbb"].mode == "notebook" and r["bbb"].link_mode == "none"
