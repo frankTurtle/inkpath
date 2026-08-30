@@ -50,15 +50,16 @@ Parameters:
     Type: String
     Default: "MyReadingNotes"
     Description: >
-      reMarkable folder NAME to watch (case-insensitive). Placeholder by design.
-      Names are not unique in reMarkable - prefer WatchFolderId if you have
-      duplicate folder names.
+      reMarkable folder NAME(s) to watch, comma-separated, case-insensitive.
+      Placeholder by design. Names are not unique in reMarkable - prefer
+      WatchFolderId if you have duplicate folder names.
   WatchFolderId:
     Type: String
     Default: ""
     Description: >
-      Optional reMarkable folder UUID. If set, takes precedence over WatchFolder
-      and removes all ambiguity from duplicate folder names.
+      Optional reMarkable folder UUID(s), comma-separated. Removes all
+      ambiguity from duplicate folder names. Watching several folders unions
+      their subtrees, so they need not be siblings.
   IncludeNotebooks:
     Type: String
     Default: ""

@@ -77,10 +77,39 @@ def valid_parent_ids(items: list[Item], root_folder_id: str) -> set[str]:
 
 
 def resolve_scope(
-    items: list[Item], *, folder_name: str = "", folder_id: str = ""
+    items: list[Item],
+    *,
+    folder_name: str = "",
+    folder_id: str = "",
+    folder_names: list[str] | None = None,
+    folder_ids: list[str] | None = None,
 ) -> set[str]:
-    """Convenience wrapper: name/id -> full set of in-scope parent ids."""
-    root = resolve_watch_folder(items, folder_name=folder_name, folder_id=folder_id)
-    parents = valid_parent_ids(items, root)
-    logger.info("Watch folder %s resolves to %d in-scope folder(s)", root[:8], len(parents))
+    """Resolve one or more watch folders to the union of their in-scope parents.
+
+    Several folders can be watched at once (say reading notes and journals) and
+    they need not be siblings; each is expanded to its own subtree and the
+    results are unioned.
+    """
+    names = list(folder_names or ([folder_name] if folder_name else []))
+    ids = list(folder_ids or ([folder_id] if folder_id else []))
+    if not names and not ids:
+        raise ScopeError("One of WatchFolder or WatchFolderId must be set")
+
+    parents: set[str] = set()
+    roots: list[str] = []
+    for fid in ids:
+        root = resolve_watch_folder(items, folder_id=fid)
+        roots.append(root)
+        parents |= valid_parent_ids(items, root)
+    for name in names:
+        root = resolve_watch_folder(items, folder_name=name)
+        roots.append(root)
+        parents |= valid_parent_ids(items, root)
+
+    logger.info(
+        "%d watch folder(s) %s resolve to %d in-scope folder(s)",
+        len(roots),
+        [r[:8] for r in roots],
+        len(parents),
+    )
     return parents

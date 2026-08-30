@@ -157,3 +157,53 @@ def test_parse_index_rejects_unknown_schema():
 def test_parse_index_rejects_malformed_line():
     with pytest.raises(RemarkableError, match="Malformed"):
         parse_index("3\ntoo:few:fields\n")
+
+
+# ------------------------------------------------------- multiple folders --
+
+
+def test_scope_unions_several_folders_by_id():
+    """Reading notes and journals are different subtrees, watched together."""
+    parents = resolve_scope(LIBRARY, folder_ids=["F1", "F2"])
+    assert parents == {"F1", "F3", "F4", "F2"}
+
+
+def test_scope_unions_folders_by_name():
+    parents = resolve_scope(LIBRARY, folder_names=["Reading", "Archive"])
+    assert parents == {"F1", "F3", "F4", "F2"}
+
+
+def test_scope_mixes_names_and_ids():
+    parents = resolve_scope(LIBRARY, folder_names=["Archive"], folder_ids=["F1"])
+    assert parents == {"F1", "F3", "F4", "F2"}
+
+
+def test_scope_single_value_still_works():
+    assert resolve_scope(LIBRARY, folder_id="F1") == {"F1", "F3", "F4"}
+    assert resolve_scope(LIBRARY, folder_name="Reading") == {"F1", "F3", "F4"}
+
+
+def test_scope_requires_at_least_one_folder():
+    with pytest.raises(ScopeError, match="must be set"):
+        resolve_scope(LIBRARY)
+
+
+def test_scope_one_bad_folder_fails_the_whole_run():
+    """Better to fail loudly than silently sync a subset."""
+    with pytest.raises(ScopeError, match="No folder named"):
+        resolve_scope(LIBRARY, folder_names=["Reading", "Nope"])
+
+
+def test_documents_from_both_folders_are_selected():
+    parents = resolve_scope(LIBRARY, folder_ids=["F1", "F2"])
+    got = {d.id for d in select_documents(LIBRARY, parents, _cfg())}
+    assert got == {"D1", "D2", "D3", "D5", "D4"}
+
+
+def test_config_accepts_comma_separated_folder_ids(monkeypatch):
+    monkeypatch.setenv("STATE_BUCKET", "b")
+    monkeypatch.setenv("GITHUB_REPO", "o/r")
+    monkeypatch.setenv("WATCH_FOLDER_ID", "aaa , bbb")
+    monkeypatch.setenv("WATCH_FOLDER", "")
+    cfg = Config.from_env()
+    assert cfg.watch_folder_ids == ["aaa", "bbb"]

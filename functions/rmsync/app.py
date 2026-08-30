@@ -554,7 +554,7 @@ def run(event: dict[str, Any], cfg: Config | None = None) -> dict[str, int]:
     st["metadataCache"] = meta_cache
 
     parents = resolve_scope(
-        items, folder_name=cfg.watch_folder, folder_id=cfg.watch_folder_id
+        items, folder_names=cfg.watch_folders, folder_ids=cfg.watch_folder_ids
     )
     docs = select_documents(items, parents, cfg)
     pending, _pending_batch = diff_pages(client, docs, st, cfg)

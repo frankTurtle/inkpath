@@ -45,6 +45,8 @@ class Config:
 
     watch_folder: str = ""
     watch_folder_id: str = ""
+    watch_folders: list[str] = field(default_factory=list)
+    watch_folder_ids: list[str] = field(default_factory=list)
     include_notebooks: list[str] = field(default_factory=list)
     exclude_notebooks: list[str] = field(default_factory=list)
 
@@ -65,6 +67,18 @@ class Config:
     dry_run: bool = False
     ssm_prefix: str = "/rmsync"
 
+    def __post_init__(self) -> None:
+        """Let the singular WatchFolder/WatchFolderId stand in for the list form.
+
+        Keeps a one-folder config - and every existing deployment - working
+        unchanged now that several folders can be watched at once.
+        """
+        if not self.watch_folders and self.watch_folder:
+            object.__setattr__(self, "watch_folders", [self.watch_folder])
+        if not self.watch_folder_ids and self.watch_folder_id:
+            object.__setattr__(self, "watch_folder_ids", [self.watch_folder_id])
+
+
     @classmethod
     def from_env(cls) -> Config:
         cfg = cls(
@@ -75,6 +89,8 @@ class Config:
             commit_mode=os.environ.get("COMMIT_MODE", "direct").strip(),
             watch_folder=os.environ.get("WATCH_FOLDER", "").strip(),
             watch_folder_id=os.environ.get("WATCH_FOLDER_ID", "").strip(),
+            watch_folders=_csv("WATCH_FOLDER"),
+            watch_folder_ids=_csv("WATCH_FOLDER_ID"),
             include_notebooks=_csv("INCLUDE_NOTEBOOKS"),
             exclude_notebooks=_csv("EXCLUDE_NOTEBOOKS"),
             ai_provider=os.environ.get("AI_PROVIDER", "bedrock").strip(),
@@ -105,7 +121,7 @@ class Config:
                 "Set at most one."
             )
         # CRITICAL: without a folder scope the first run OCRs the entire library.
-        if not self.watch_folder and not self.watch_folder_id:
+        if not self.watch_folders and not self.watch_folder_ids:
             raise ConfigError(
                 "One of WatchFolder or WatchFolderId is required. Running unscoped "
                 "would OCR your entire reMarkable library in a single execution."
