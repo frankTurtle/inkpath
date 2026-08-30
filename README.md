@@ -173,6 +173,7 @@ Every knob is a deploy-time parameter — changing one is a redeploy, not a code
 | `ExcludeNotebooks` | *(empty)* | Comma-separated denylist |
 | `AiProvider` | `bedrock` | `bedrock` or `direct` |
 | `AiModelId` | `us.anthropic.claude-haiku-4-5-...` | See the inference-profile note below |
+| `AiBaseUrl` | *(empty)* | `direct` only — vendor origin, e.g. `https://api.x.ai` |
 | `BatchMode` | `none` | `none`, `bedrock-batch`, `direct-batch` |
 | `PollSchedule` | `cron(0/15 6-23 * * ? *)` | Skips overnight polls |
 | `ScheduleState` | `ENABLED` | Deploy `DISABLED` to provision before secrets exist |
@@ -216,6 +217,34 @@ Swapping models is a parameter override, not a code change:
 ```bash
 sam deploy --parameter-overrides AiModelId=us.anthropic.claude-sonnet-4-5-20250929-v1:0
 ```
+
+### Using a model that is not on Bedrock (e.g. Grok)
+
+Bedrock hosts several providers, but a model appearing in
+`list-foundation-models` does not mean your account may invoke it. Two distinct
+gates exist, and both fail at *invoke* time, never at deploy time:
+
+- `ResourceNotFoundException: Model use case details have not been submitted` —
+  fill in the provider use-case form on the Bedrock **Model access** page.
+- `AccessDeniedException: <model> is not available for this account` — the model
+  is not enabled for you at all. For some third-party models this is not
+  self-serve, and the error points at AWS Sales.
+
+When Bedrock cannot serve the model you want, go direct to the vendor:
+
+```bash
+aws ssm put-parameter --name /rmsync/ai-api-key --type SecureString \
+  --value 'xai-...' --region us-east-1
+
+sam deploy --parameter-overrides \
+  AiProvider=direct AiBaseUrl=https://api.x.ai AiModelId=grok-4.6
+```
+
+xAI is Anthropic-SDK-compatible, so `providers/direct_api.py` serves both
+vendors unchanged. Only the auth header differs, and it is chosen from the
+host: xAI takes `Authorization: Bearer`, Anthropic takes `x-api-key`. Going
+direct trades the IAM-only auth story for an API key in SSM and separate
+vendor billing.
 
 ### Batch mode (optional, ~50% cheaper, up to 24h slower)
 
