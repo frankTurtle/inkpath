@@ -163,3 +163,14 @@ def test_info_logs_survive_a_preinstalled_root_handler():
     finally:
         root.handlers, root.level = original
         importlib.reload(app_mod)
+
+
+def test_dry_run_does_not_persist_state(wired):
+    """A dry run that recorded pages would make the next real run a no-op."""
+    app_mod.run({}, _cfg(dry_run=True))
+    assert "state" not in wired["saved"]
+
+    # And the following real run still sees the page as outstanding.
+    stats = app_mod.run({}, _cfg())
+    assert stats["commits"] == 1
+    assert wired["saved"]["state"]["docs"]["d1"]["pages"]["p1"]["status"] == "committed"

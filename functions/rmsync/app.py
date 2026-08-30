@@ -519,7 +519,13 @@ def run(event: dict[str, Any], cfg: Config | None = None) -> dict[str, int]:
         logger.info("No changed pages: zero model calls, zero commits")
 
     # CRITICAL: state is written last, after the commits it records succeeded.
-    state_mod.save_state(st, cfg.state_bucket)
+    # A dry run must not persist anything: recording pages it only pretended to
+    # commit would make the next real run believe the work was already done and
+    # skip every page.
+    if cfg.dry_run:
+        logger.info("DRY_RUN - state not persisted (%d page(s) simulated)", runner.stats["commits"])
+    else:
+        state_mod.save_state(st, cfg.state_bucket)
 
     runner.stats["durationMs"] = int((time.time() - started) * 1000)
     # Log usage so cost is attributable from logs alone.
