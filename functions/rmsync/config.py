@@ -49,6 +49,7 @@ class Config:
 
     ai_provider: str = "bedrock"
     ai_model_id: str = ""
+    ai_base_url: str = ""
 
     batch_mode: str = "none"
     batch_min_records: int = 100
@@ -75,6 +76,7 @@ class Config:
             exclude_notebooks=_csv("EXCLUDE_NOTEBOOKS"),
             ai_provider=os.environ.get("AI_PROVIDER", "bedrock").strip(),
             ai_model_id=os.environ.get("AI_MODEL_ID", "").strip(),
+            ai_base_url=os.environ.get("AI_BASE_URL", "").strip(),
             batch_mode=os.environ.get("BATCH_MODE", "none").strip(),
             batch_min_records=_int("BATCH_MIN_RECORDS", 100),
             batch_max_wait_days=_int("BATCH_MAX_WAIT_DAYS", 14),

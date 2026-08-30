@@ -13,7 +13,7 @@ Metadata:
       - Label: {default: "reMarkable scoping"}
         Parameters: [WatchFolder, WatchFolderId, IncludeNotebooks, ExcludeNotebooks]
       - Label: {default: "AI provider"}
-        Parameters: [AiProvider, AiModelId, BedrockModelArnPattern]
+        Parameters: [AiProvider, AiModelId, AiBaseUrl, BedrockModelArnPattern]
       - Label: {default: "Batch inference (optional, ~50% cheaper, adds latency)"}
         Parameters: [BatchMode, BatchMinRecords, BatchMaxWaitDays]
       - Label: {default: "Run behaviour and cost guardrails"}
@@ -73,6 +73,14 @@ Parameters:
     Description: >
       Bedrock model or inference-profile id. Confirm it supports IMAGE input in
       your region before deploying (aws bedrock list-foundation-models).
+  AiBaseUrl:
+    Type: String
+    Default: ""
+    Description: >
+      Only used when AiProvider=direct. The vendor's API origin, e.g.
+      https://api.x.ai for xAI/Grok or https://api.anthropic.com. Leave blank
+      for the Anthropic default. The auth header is chosen from the host: xAI
+      takes `Authorization: Bearer`, Anthropic takes `x-api-key`.
   BedrockModelArnPattern:
     Type: String
     Default: "arn:aws:bedrock:*::foundation-model/*"
@@ -212,6 +220,7 @@ Resources:
           EXCLUDE_NOTEBOOKS: !Ref ExcludeNotebooks
           AI_PROVIDER: !Ref AiProvider
           AI_MODEL_ID: !Ref AiModelId
+          AI_BASE_URL: !Ref AiBaseUrl
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

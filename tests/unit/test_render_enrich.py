@@ -228,6 +228,7 @@ class FakeSession:
     def __init__(self, text=PAYLOAD):
         self.headers: dict = {}
         self._text = text
+        self.posted: list = []
 
     def post(self, *a, **kw):
         return FakeResp(self._text)
@@ -268,3 +269,50 @@ def test_grok_model_gets_low_reasoning_effort():
 
     assert _additional_fields("xai.grok-4.6") == {"reasoning_effort": "low"}
     assert _additional_fields("anthropic.claude-haiku-4-5") == {}
+
+
+# ------------------------------------------------- direct provider routing --
+
+
+@pytest.mark.parametrize(
+    "base_url,expected_url",
+    [
+        ("https://api.x.ai", "https://api.x.ai/v1/messages"),
+        ("https://api.x.ai/", "https://api.x.ai/v1/messages"),
+        ("https://api.x.ai/v1/messages", "https://api.x.ai/v1/messages"),
+        ("https://api.anthropic.com", "https://api.anthropic.com/v1/messages"),
+    ],
+)
+def test_direct_provider_builds_messages_url(base_url, expected_url):
+    p = DirectApiProvider("grok-4.6", "key", base_url=base_url, session=FakeSession())
+    assert p._base_url == expected_url
+
+
+def test_direct_provider_uses_bearer_for_xai():
+    """xAI is Anthropic-shaped but takes Bearer; x-api-key would 401."""
+    s = FakeSession()
+    DirectApiProvider("grok-4.6", "xai-key", base_url="https://api.x.ai", session=s)
+    assert s.headers["Authorization"] == "Bearer xai-key"
+    assert "x-api-key" not in s.headers
+
+
+def test_direct_provider_uses_x_api_key_for_anthropic():
+    s = FakeSession()
+    DirectApiProvider("claude", "ant-key", base_url="https://api.anthropic.com", session=s)
+    assert s.headers["x-api-key"] == "ant-key"
+    assert "anthropic-version" in s.headers
+    assert "Authorization" not in s.headers
+
+
+def test_direct_provider_defaults_to_anthropic():
+    s = FakeSession()
+    p = DirectApiProvider("claude", "k", session=s)
+    assert p._base_url == "https://api.anthropic.com/v1/messages"
+    assert "x-api-key" in s.headers
+
+
+def test_registry_passes_base_url_to_direct_provider():
+    from rmsync.providers import get as get_provider
+
+    p = get_provider("direct", "grok-4.6", api_key="k", base_url="https://api.x.ai")
+    assert p._base_url == "https://api.x.ai/v1/messages"

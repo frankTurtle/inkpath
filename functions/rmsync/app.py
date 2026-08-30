@@ -149,7 +149,10 @@ class Runner:
             if self.cfg.ai_provider == "direct":
                 api_key = get_secret("ai-api-key", prefix=self.cfg.ssm_prefix)
             self._provider = providers.get(
-                self.cfg.ai_provider, self.cfg.ai_model_id, api_key=api_key
+                self.cfg.ai_provider,
+                self.cfg.ai_model_id,
+                api_key=api_key,
+                base_url=self.cfg.ai_base_url,
             )
         return self._provider
 

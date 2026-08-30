@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from urllib.parse import urlparse
 
 import requests
 
@@ -26,9 +27,30 @@ from .base import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "https://api.anthropic.com/v1/messages"
+DEFAULT_BASE_URL = "https://api.anthropic.com"
 ANTHROPIC_VERSION = "2023-06-01"
 HTTP_TIMEOUT = 120
+
+# Vendors that speak the Anthropic Messages shape but differ on the auth header.
+# xAI is Anthropic-SDK-compatible at https://api.x.ai but authenticates with
+# `Authorization: Bearer`, not `x-api-key`; sending the wrong one is a 401.
+_BEARER_HOSTS = ("api.x.ai",)
+
+
+def _auth_headers(base_url: str, api_key: str) -> dict[str, str]:
+    """Pick the auth header the target vendor actually accepts."""
+    host = urlparse(base_url).hostname or ""
+    if any(host == h or host.endswith(f".{h}") for h in _BEARER_HOSTS):
+        return {"Authorization": f"Bearer {api_key}"}
+    return {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}
+
+
+def _messages_url(base_url: str) -> str:
+    """Accept either a bare origin or a full /v1/messages URL."""
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/messages"):
+        return trimmed
+    return f"{trimmed}/v1/messages"
 
 
 class DirectApiProvider:
@@ -47,14 +69,10 @@ class DirectApiProvider:
                 "AiProvider=direct requires an API key in SSM at /rmsync/ai-api-key"
             )
         self.model_id = model_id
-        self._base_url = base_url
+        self._base_url = _messages_url(base_url or DEFAULT_BASE_URL)
         self._session = session or requests.Session()
         self._session.headers.update(
-            {
-                "x-api-key": api_key,
-                "anthropic-version": ANTHROPIC_VERSION,
-                "content-type": "application/json",
-            }
+            {"content-type": "application/json", **_auth_headers(self._base_url, api_key)}
         )
 
     def _call(self, image_bytes: bytes, prompt: str) -> tuple[str, int, int]:

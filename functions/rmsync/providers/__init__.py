@@ -28,14 +28,16 @@ __all__ = [
 ]
 
 
-def get(provider: str, model_id: str, *, api_key: str = "") -> VisionProvider:
+def get(
+    provider: str, model_id: str, *, api_key: str = "", base_url: str = ""
+) -> VisionProvider:
     """Return the configured provider implementation."""
     if provider == "bedrock":
         from .bedrock import BedrockProvider
 
         return BedrockProvider(model_id)
     if provider == "direct":
-        from .direct_api import DirectApiProvider
+        from .direct_api import DEFAULT_BASE_URL, DirectApiProvider
 
-        return DirectApiProvider(model_id, api_key)
+        return DirectApiProvider(model_id, api_key, base_url=base_url or DEFAULT_BASE_URL)
     raise ValueError(f"Unknown AiProvider {provider!r}; expected 'bedrock' or 'direct'")
