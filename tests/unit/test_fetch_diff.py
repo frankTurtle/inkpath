@@ -30,8 +30,9 @@ class FakeClient:
 
     def get_entries(self, entry_id, hash_):
         self.entry_calls += 1
+        # reMarkable nests page blobs as "<docId>/<pageId>.rm".
         entries = [
-            RawEntry(hash=h, type=0, id=f"{pid}.rm", subfiles=0, size=10)
+            RawEntry(hash=h, type=0, id=f"{entry_id}/{pid}.rm", subfiles=0, size=10)
             for pid, h in self.pages.items()
         ]
         entries.append(RawEntry(hash="ch", type=0, id=f"{entry_id}.content", subfiles=0, size=5))
@@ -124,12 +125,33 @@ def test_fetch_caps_at_max_pages():
     assert len(client.blob_calls) == 3      # uncapped pages are never downloaded
 
 
-def test_download_attaches_blob_data():
+def test_download_uses_the_nested_file_name():
+    """The rm-filename header must be the stored path, not "<page_id>.rm"."""
     st = state_mod.empty_state()
     client = FakeClient({"p1": "h1"})
     pending, _ = diff_pages(client, [_doc()], st, _cfg())
+    assert pending[0].page_id == "p1"                    # bare uuid for state
+    assert pending[0].file_name == "d1/p1.rm"            # full path for fetching
     pages = download_pages(client, pending, _cfg())
-    assert pages[0].data == b"BLOB:p1.rm"
+    assert pages[0].data == b"BLOB:d1/p1.rm"
+
+
+def test_page_order_survives_nested_paths():
+    """The bug this guards: keying on the full path never matches cPages ids,
+    so reading order silently degrades to a uuid sort."""
+    st = state_mod.empty_state()
+    content = {"cPages": {"pages": [{"id": "zzz"}, {"id": "aaa"}]}}
+    client = FakeClient({"aaa": "h1", "zzz": "h2"}, content=content)
+    pending, _ = diff_pages(client, [_doc()], st, _cfg())
+    assert [p.page_id for p in pending] == ["zzz", "aaa"]   # content order, not sorted
+
+
+def test_page_ref_defaults_file_name_when_absent():
+    from rmsync.fetch import PageRef
+
+    ref = PageRef(doc_id="d", doc_hash="h", notebook="N", page_id="p",
+                  page_hash="ph", page_index=0)
+    assert ref.file_name == "p.rm"
 
 
 def test_duplicate_page_ids_are_processed_once():

@@ -22,7 +22,14 @@ class PageRef:
     page_id: str
     page_hash: str
     page_index: int
+    # The stored file name, which is NOT "<page_id>.rm": reMarkable nests page
+    # blobs as "<docId>/<pageId>.rm". The rm-filename header must match exactly.
+    file_name: str = ""
     data: bytes = field(default=b"", repr=False)
+
+    def __post_init__(self) -> None:
+        if not self.file_name:
+            self.file_name = f"{self.page_id}.rm"
 
 
 def select_documents(items: list[Item], parents: set[str], cfg: Config) -> list[Item]:
@@ -123,8 +130,24 @@ def diff_pages(
         content = client.get_content(doc.id, entries)
         order = _ordered_page_ids(content)
 
-        rm_entries = {e.id[:-3]: e for e in entries if e.id.endswith(".rm")}
-        page_ids = _dedupe([pid for pid in order if pid in rm_entries]) or sorted(rm_entries)
+        # Page blobs are stored as "<docId>/<pageId>.rm", so the bare page uuid
+        # is the basename. Keying on the full path would never match the page
+        # ids in .content, silently dropping the reading order and leaving
+        # pages sorted by uuid instead.
+        rm_entries = {}
+        for entry in entries:
+            if entry.id.endswith(".rm"):
+                rm_entries[entry.id.rsplit("/", 1)[-1][:-3]] = entry
+
+        ordered = _dedupe([pid for pid in order if pid in rm_entries])
+        if order and not ordered:
+            logger.warning(
+                "None of the %d page ids in .content matched a .rm blob for %s; "
+                "falling back to uuid order",
+                len(order),
+                doc.visible_name,
+            )
+        page_ids = ordered or sorted(rm_entries)
 
         for index, page_id in enumerate(page_ids):
             entry = rm_entries[page_id]
@@ -141,6 +164,7 @@ def diff_pages(
                     page_id=page_id,
                     page_hash=entry.hash,
                     page_index=index,
+                    file_name=entry.id,
                 )
             )
 
@@ -166,5 +190,5 @@ def download_pages(client: RemarkableClient, pages: list[PageRef], cfg: Config) 
             len(pages),
         )
     for page in capped:
-        page.data = client.get_blob(f"{page.page_id}.rm", page.page_hash)
+        page.data = client.get_blob(page.file_name, page.page_hash)
     return capped
