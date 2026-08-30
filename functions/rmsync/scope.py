@@ -95,14 +95,19 @@ def resolve_scope(
     if not names and not ids:
         raise ScopeError("One of WatchFolder or WatchFolderId must be set")
 
+    # Ids win outright when present, rather than being unioned with names. A
+    # deployment that has moved to ids often still carries a leftover
+    # placeholder name, and unioning would make that stale value fail the run.
+    if ids:
+        if names:
+            logger.info("WatchFolderId is set; ignoring WatchFolder %s", names)
+        resolved = [(resolve_watch_folder(items, folder_id=f), f) for f in ids]
+    else:
+        resolved = [(resolve_watch_folder(items, folder_name=n), n) for n in names]
+
     parents: set[str] = set()
     roots: list[str] = []
-    for fid in ids:
-        root = resolve_watch_folder(items, folder_id=fid)
-        roots.append(root)
-        parents |= valid_parent_ids(items, root)
-    for name in names:
-        root = resolve_watch_folder(items, folder_name=name)
+    for root, _requested in resolved:
         roots.append(root)
         parents |= valid_parent_ids(items, root)
 
@@ -113,3 +118,38 @@ def resolve_scope(
         len(parents),
     )
     return parents
+
+
+def resolve_scope_map(
+    items: list[Item],
+    *,
+    folder_names: list[str] | None = None,
+    folder_ids: list[str] | None = None,
+) -> dict[str, str]:
+    """Map every in-scope folder id to the watch root it descends from.
+
+    Routing a document to a vault destination needs to know *which* watched
+    folder it came from, which a flat set of parent ids cannot answer.
+    """
+    names = list(folder_names or [])
+    ids = list(folder_ids or [])
+    if not names and not ids:
+        raise ScopeError("One of WatchFolder or WatchFolderId must be set")
+
+    if ids:
+        if names:
+            logger.info("WatchFolderId is set; ignoring WatchFolder %s", names)
+        roots = [resolve_watch_folder(items, folder_id=f) for f in ids]
+    else:
+        roots = [resolve_watch_folder(items, folder_name=n) for n in names]
+
+    mapping: dict[str, str] = {}
+    for root in roots:
+        for parent in valid_parent_ids(items, root):
+            # First root wins if subtrees somehow overlap, so a document is
+            # never routed to two different destinations.
+            mapping.setdefault(parent, root)
+    logger.info(
+        "%d watch folder(s) resolve to %d in-scope folder(s)", len(roots), len(mapping)
+    )
+    return mapping

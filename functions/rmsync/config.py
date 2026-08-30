@@ -42,6 +42,7 @@ class Config:
     github_branch: str = "main"
     vault_note_path: str = "Inbox/reMarkable"
     commit_mode: str = "direct"
+    vault_routes: str = ""
 
     watch_folder: str = ""
     watch_folder_id: str = ""
@@ -87,6 +88,7 @@ class Config:
             github_branch=os.environ.get("GITHUB_BRANCH", "main"),
             vault_note_path=os.environ.get("VAULT_NOTE_PATH", "Inbox/reMarkable").strip("/"),
             commit_mode=os.environ.get("COMMIT_MODE", "direct").strip(),
+            vault_routes=os.environ.get("VAULT_ROUTES", "").strip(),
             watch_folder=os.environ.get("WATCH_FOLDER", "").strip(),
             watch_folder_id=os.environ.get("WATCH_FOLDER_ID", "").strip(),
             watch_folders=_csv("WATCH_FOLDER"),

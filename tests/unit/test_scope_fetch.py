@@ -173,9 +173,10 @@ def test_scope_unions_folders_by_name():
     assert parents == {"F1", "F3", "F4", "F2"}
 
 
-def test_scope_mixes_names_and_ids():
-    parents = resolve_scope(LIBRARY, folder_names=["Archive"], folder_ids=["F1"])
-    assert parents == {"F1", "F3", "F4", "F2"}
+def test_ids_take_precedence_over_names():
+    """A stale placeholder WatchFolder must not fail a run that uses ids."""
+    parents = resolve_scope(LIBRARY, folder_names=["Nonexistent"], folder_ids=["F1"])
+    assert parents == {"F1", "F3", "F4"}
 
 
 def test_scope_single_value_still_works():

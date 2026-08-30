@@ -170,20 +170,21 @@ class GitHubVault:
             logger.warning("Could not delete branch %s (%s)", name, resp.status_code)
 
 
-def note_path(vault_note_path: str, notebook: str, title: str) -> str:
+def note_path(vault_dir: str, title: str) -> str:
+    """Full path for a note, given the directory its watch folder routes to."""
     from .enrich import sanitize_path_component
 
-    folder = sanitize_path_component(notebook, fallback="reMarkable")
     name = sanitize_path_component(title, fallback="untitled")
-    return f"{vault_note_path}/{folder}/{name}.md"
+    base = vault_dir.strip("/")
+    return f"{base}/{name}.md" if base else f"{name}.md"
 
 
-def attachment_path(vault_note_path: str, notebook: str, title: str) -> str:
+def attachment_path(vault_dir: str, title: str) -> str:
     from .enrich import sanitize_path_component
 
-    folder = sanitize_path_component(notebook, fallback="reMarkable")
     name = sanitize_path_component(title, fallback="untitled")
-    return f"{vault_note_path}/{folder}/attachments/{name}.png"
+    base = vault_dir.strip("/")
+    return f"{base}/attachments/{name}.png" if base else f"attachments/{name}.png"
 
 
 def disambiguate_path(path: str, taken: set[str], discriminator: str) -> str:

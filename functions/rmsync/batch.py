@@ -63,6 +63,7 @@ class QueuedPage:
     page_index: int
     s3_key: str
     queued_at: str
+    vault_dir: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return dict(self.__dict__)

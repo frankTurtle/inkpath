@@ -25,6 +25,9 @@ class PageRef:
     # The stored file name, which is NOT "<page_id>.rm": reMarkable nests page
     # blobs as "<docId>/<pageId>.rm". The rm-filename header must match exactly.
     file_name: str = ""
+    # Vault directory this page's note belongs in, decided by the watch
+    # folder it came from (see routes.py).
+    vault_dir: str = ""
     data: bytes = field(default=b"", repr=False)
 
     def __post_init__(self) -> None:
@@ -32,7 +35,9 @@ class PageRef:
             self.file_name = f"{self.page_id}.rm"
 
 
-def select_documents(items: list[Item], parents: set[str], cfg: Config) -> list[Item]:
+def select_documents(
+    items: list[Item], parents: set[str] | dict[str, str], cfg: Config
+) -> list[Item]:
     """Apply folder scope, then include/exclude notebook filters."""
     if cfg.include_notebooks and cfg.exclude_notebooks:
         raise ConfigError("IncludeNotebooks and ExcludeNotebooks are mutually exclusive")
@@ -110,12 +115,17 @@ def diff_pages(
     docs: list[Item],
     st: dict,
     cfg: Config,
+    scope_map: dict[str, str] | None = None,
 ) -> tuple[list[PageRef], int]:
     """Return pages needing work, plus a count skipped as already pending batch.
 
     Three buckets, not two: a page can be new, awaiting a batch result, or
     committed. A pending page is neither done nor safe to re-queue.
     """
+    from .routes import parse_routes, vault_dir
+
+    routes = parse_routes(cfg.vault_routes)
+    scope_map = scope_map or {}
     pending: list[PageRef] = []
     pending_batch_skipped = 0
 
@@ -125,6 +135,9 @@ def diff_pages(
         recorded = st.get("docs", {}).get(doc.id, {})
         if recorded.get("hash") == doc.hash:
             continue
+
+        route = routes.get(scope_map.get(doc.parent, ""))
+        dest = vault_dir(doc.visible_name, route=route, default_path=cfg.vault_note_path)
 
         entries = client.get_entries(doc.id, doc.hash)
         content = client.get_content(doc.id, entries)
@@ -165,6 +178,7 @@ def diff_pages(
                     page_hash=entry.hash,
                     page_index=index,
                     file_name=entry.id,
+                    vault_dir=dest,
                 )
             )
 

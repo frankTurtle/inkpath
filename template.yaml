@@ -9,7 +9,7 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label: {default: "Vault (GitHub) target"}
-        Parameters: [GitHubRepo, GitHubBranch, VaultNotePath, CommitMode]
+        Parameters: [GitHubRepo, GitHubBranch, VaultNotePath, VaultRoutes, CommitMode]
       - Label: {default: "reMarkable scoping"}
         Parameters: [WatchFolder, WatchFolderId, IncludeNotebooks, ExcludeNotebooks]
       - Label: {default: "AI provider"}
@@ -46,6 +46,16 @@ Parameters:
       run's notes on a branch, opens a PR and squash-merges it, so the vault
       gets one reviewable entry per sync instead of a commit per page. A PR run
       needs a PAT with "Pull requests: Read and write" as well as Contents.
+  VaultRoutes:
+    Type: String
+    Default: ""
+    Description: >
+      Per-folder destinations, so different watch folders land in different
+      parts of the vault. Entries separated by ";" as
+      <watchFolderId>=<vaultPath>[|<mode>], e.g.
+      "abc-123=Book Notes;def-456=Journals|year". Modes: notebook (default,
+      groups by notebook name), year (groups by the year in the notebook name),
+      flat. Folders with no route fall back to VaultNotePath.
   WatchFolder:
     Type: String
     Default: "MyReadingNotes"
@@ -242,6 +252,7 @@ Resources:
           GITHUB_BRANCH: !Ref GitHubBranch
           VAULT_NOTE_PATH: !Ref VaultNotePath
           COMMIT_MODE: !Ref CommitMode
+          VAULT_ROUTES: !Ref VaultRoutes
           WATCH_FOLDER: !Ref WatchFolder
           WATCH_FOLDER_ID: !Ref WatchFolderId
           INCLUDE_NOTEBOOKS: !Ref IncludeNotebooks

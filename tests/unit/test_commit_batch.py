@@ -90,10 +90,10 @@ def test_bad_repo_format_rejected():
 
 
 def test_note_paths_are_sanitized():
-    p = note_path("Inbox/reMarkable", "Reading: Antifragile", "Via negativa")
-    assert p == "Inbox/reMarkable/Reading Antifragile/Via negativa.md"
-    a = attachment_path("Inbox/reMarkable", "Reading: Antifragile", "Via negativa")
-    assert a.endswith("/attachments/Via negativa.png")
+    p = note_path("Book Notes/Reading Antifragile", "Via: negativa")
+    assert p == "Book Notes/Reading Antifragile/Via negativa.md"
+    a = attachment_path("Book Notes/Reading Antifragile", "Via negativa")
+    assert a == "Book Notes/Reading Antifragile/attachments/Via negativa.png"
 
 
 def test_commit_message_format():
@@ -294,3 +294,73 @@ def test_claimed_paths_excludes_the_page_being_written():
     assert state_mod.claimed_paths(st) == {"a.md", "b.md"}
     # A page re-committing to its own path must not collide with itself.
     assert state_mod.claimed_paths(st, excluding=("d1", "p1")) == {"b.md"}
+
+
+# ----------------------------------------------------------------- routing --
+
+
+def test_parse_routes_basic():
+    from rmsync.routes import parse_routes
+
+    r = parse_routes("aaa=Book Notes;bbb=Journals|year")
+    assert r["aaa"].vault_path == "Book Notes" and r["aaa"].mode == "notebook"
+    assert r["bbb"].vault_path == "Journals" and r["bbb"].mode == "year"
+
+
+def test_parse_routes_skips_malformed_without_dying():
+    from rmsync.routes import parse_routes
+
+    r = parse_routes("garbage;aaa=Book Notes;")
+    assert list(r) == ["aaa"]
+
+
+def test_parse_routes_falls_back_on_unknown_mode():
+    from rmsync.routes import parse_routes
+
+    assert parse_routes("aaa=X|nonsense")["aaa"].mode == "notebook"
+
+
+@pytest.mark.parametrize(
+    "notebook,expected",
+    [("Journal 2021", "2021"), ("Journals - 2020", "2020"), ("Walden", None)],
+)
+def test_year_extraction(notebook, expected):
+    from rmsync.routes import year_of
+
+    assert year_of(notebook) == expected
+
+
+def test_vault_dir_groups_books_by_notebook():
+    from rmsync.routes import Route, vault_dir
+
+    got = vault_dir("Walden", route=Route("Book Notes", "notebook"), default_path="Inbox")
+    assert got == "Book Notes/Walden"
+
+
+def test_vault_dir_groups_journals_by_year():
+    from rmsync.routes import Route, vault_dir
+
+    got = vault_dir("Journal 2021", route=Route("Journals", "year"), default_path="Inbox")
+    assert got == "Journals/2021"
+
+
+def test_vault_dir_year_mode_falls_back_when_no_year():
+    """A yearless notebook must not collide with others at the route root."""
+    from rmsync.routes import Route, vault_dir
+
+    got = vault_dir("Misc Notes", route=Route("Journals", "year"), default_path="Inbox")
+    assert got == "Journals/Misc Notes"
+
+
+def test_vault_dir_flat_mode():
+    from rmsync.routes import Route, vault_dir
+
+    assert vault_dir("Anything", route=Route("Scratch", "flat"), default_path="Inbox") == "Scratch"
+
+
+def test_vault_dir_unrouted_folder_uses_default():
+    from rmsync.routes import vault_dir
+
+    assert vault_dir("Walden", route=None, default_path="Inbox/reMarkable") == (
+        "Inbox/reMarkable/Walden"
+    )

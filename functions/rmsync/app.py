@@ -42,7 +42,7 @@ from .enrich import compose_note, sanitize_path_component
 from .fetch import diff_pages, download_pages, select_documents
 from .remarkable import RemarkableClient
 from .render import render_page
-from .scope import resolve_scope
+from .scope import resolve_scope_map
 
 _LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
 _root = logging.getLogger()
@@ -184,6 +184,7 @@ class Runner:
         page_id: str,
         page_hash: str,
         page_index: int,
+        vault_dir: str,
         note,
         png: bytes | None,
     ) -> None:
@@ -203,7 +204,7 @@ class Runner:
             return
 
         path = existing or disambiguate_path(
-            note_path(self.cfg.vault_note_path, notebook, note.title),
+            note_path(vault_dir, note.title),
             state_mod.claimed_paths(st, excluding=(doc_id, page_id)),
             f"p{page_index + 1}",
         )
@@ -212,7 +213,7 @@ class Runner:
             logger.info("DRY_RUN - would commit %s:\n%s", path, note.body)
         else:
             if note.attach_png and png:
-                apath = attachment_path(self.cfg.vault_note_path, notebook, note.title)
+                apath = attachment_path(vault_dir, note.title)
                 self.vault.put_file(apath, png, commit_message(notebook, doc_id))
             self.vault.put_file(
                 path, note.body.encode("utf-8"), commit_message(notebook, doc_id)
@@ -290,6 +291,7 @@ class Runner:
                     page_id=page.page_id,
                     page_hash=page.page_hash,
                     page_index=page.page_index,
+                    vault_dir=page.vault_dir,
                     note=note,
                     png=png,
                 )
@@ -374,6 +376,7 @@ class Runner:
             page_id=record["page_id"],
             page_hash=record["page_hash"],
             page_index=record["page_index"],
+            vault_dir=record.get("vault_dir", ""),
             note=note,
             png=png,
         )
@@ -453,6 +456,7 @@ class Runner:
                     page_id=record["page_id"],
                     page_hash=record["page_hash"],
                     page_index=record["page_index"],
+                    vault_dir=record.get("vault_dir", ""),
                     note=note,
                     png=png,
                 )
@@ -487,6 +491,7 @@ class Runner:
                         doc_id=page.doc_id, doc_hash=page.doc_hash, notebook=page.notebook,
                         page_id=page.page_id, page_hash=page.page_hash,
                         page_index=page.page_index, s3_key=key, queued_at=_now_iso(),
+                        vault_dir=page.vault_dir,
                     )
                 )
                 # Mark pending so the next poll neither re-queues nor re-fetches it.
@@ -553,11 +558,11 @@ def run(event: dict[str, Any], cfg: Config | None = None) -> dict[str, int]:
     items, meta_cache = client.list_items(st.get("metadataCache"))
     st["metadataCache"] = meta_cache
 
-    parents = resolve_scope(
+    scope_map = resolve_scope_map(
         items, folder_names=cfg.watch_folders, folder_ids=cfg.watch_folder_ids
     )
-    docs = select_documents(items, parents, cfg)
-    pending, _pending_batch = diff_pages(client, docs, st, cfg)
+    docs = select_documents(items, scope_map, cfg)
+    pending, _pending_batch = diff_pages(client, docs, st, cfg, scope_map)
 
     if pending:
         pages = download_pages(client, pending, cfg)
