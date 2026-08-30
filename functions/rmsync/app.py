@@ -183,6 +183,7 @@ class Runner:
         notebook: str,
         page_id: str,
         page_hash: str,
+        page_index: int,
         note,
         png: bytes | None,
     ) -> None:
@@ -204,7 +205,7 @@ class Runner:
         path = existing or disambiguate_path(
             note_path(self.cfg.vault_note_path, notebook, note.title),
             state_mod.claimed_paths(st, excluding=(doc_id, page_id)),
-            page_id[:8],
+            f"p{page_index + 1}",
         )
 
         if self.cfg.dry_run:
@@ -288,6 +289,7 @@ class Runner:
                     notebook=page.notebook,
                     page_id=page.page_id,
                     page_hash=page.page_hash,
+                    page_index=page.page_index,
                     note=note,
                     png=png,
                 )
@@ -371,6 +373,7 @@ class Runner:
             notebook=record["notebook"],
             page_id=record["page_id"],
             page_hash=record["page_hash"],
+            page_index=record["page_index"],
             note=note,
             png=png,
         )
@@ -449,6 +452,7 @@ class Runner:
                     notebook=record["notebook"],
                     page_id=record["page_id"],
                     page_hash=record["page_hash"],
+                    page_index=record["page_index"],
                     note=note,
                     png=png,
                 )

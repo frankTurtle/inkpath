@@ -191,16 +191,20 @@ def disambiguate_path(path: str, taken: set[str], discriminator: str) -> str:
 
     Two pages of the same notebook can easily yield the same title - a book's
     notes often repeat a theme - and both would resolve to one path, silently
-    overwriting each other. The page id is a stable, deterministic
-    discriminator, so the same page keeps the same filename across runs.
+    overwriting each other.
+
+    The discriminator is the page number, which tells a human which page they
+    are looking at. An opaque id would disambiguate equally well but leaves two
+    files indistinguishable in the sidebar, which reads as a duplicate and
+    invites deleting the wrong one.
     """
     if path not in taken:
         return path
     stem, _, ext = path.rpartition(".")
-    candidate = f"{stem} ({discriminator}).{ext}" if stem else f"{path} ({discriminator})"
+    candidate = f"{stem} {discriminator}.{ext}" if stem else f"{path} {discriminator}"
     suffix = 2
     while candidate in taken:
-        candidate = f"{stem} ({discriminator}-{suffix}).{ext}"
+        candidate = f"{stem} {discriminator}-{suffix}.{ext}"
         suffix += 1
     return candidate
 

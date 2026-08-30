@@ -260,14 +260,15 @@ def test_no_double_commit_across_batch_and_sync_paths():
 def test_disambiguate_leaves_free_path_alone():
     from rmsync.commit import disambiguate_path
 
-    assert disambiguate_path("a/b.md", set(), "1234abcd") == "a/b.md"
+    assert disambiguate_path("a/b.md", set(), "p2") == "a/b.md"
 
 
-def test_disambiguate_appends_page_discriminator():
+def test_disambiguate_appends_readable_page_number():
+    """A human must be able to tell two same-titled pages apart in the sidebar."""
     from rmsync.commit import disambiguate_path
 
-    got = disambiguate_path("Inbox/Walden/Quotes.md", {"Inbox/Walden/Quotes.md"}, "6fdb83c9")
-    assert got == "Inbox/Walden/Quotes (6fdb83c9).md"
+    got = disambiguate_path("Inbox/Walden/Quotes.md", {"Inbox/Walden/Quotes.md"}, "p2")
+    assert got == "Inbox/Walden/Quotes p2.md"
 
 
 def test_disambiguate_is_stable_for_the_same_page():
@@ -275,8 +276,8 @@ def test_disambiguate_is_stable_for_the_same_page():
     from rmsync.commit import disambiguate_path
 
     taken = {"x/y.md"}
-    a = disambiguate_path("x/y.md", taken, "abcd1234")
-    b = disambiguate_path("x/y.md", taken, "abcd1234")
+    a = disambiguate_path("x/y.md", taken, "p3")
+    b = disambiguate_path("x/y.md", taken, "p3")
     assert a == b
 
 

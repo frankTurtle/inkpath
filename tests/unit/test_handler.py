@@ -50,10 +50,10 @@ def _runner(cfg, provider, vault):
     return r
 
 
-def _page(data, page_id="p1"):
+def _page(data, page_id="p1", page_index=0):
     return PageRef(
         doc_id="d1", doc_hash="dh", notebook="Reading", page_id=page_id,
-        page_hash=f"h-{page_id}", page_index=0, data=data,
+        page_hash=f"h-{page_id}", page_index=page_index, data=data,
     )
 
 
@@ -152,12 +152,12 @@ def test_two_pages_with_the_same_title_do_not_overwrite(page_rm):
     st = state_mod.empty_state()
     vault = StubVault()
     r = _runner(_cfg(), StubProvider(), vault)
-    r.process_sync(st, [_page(page_rm, "p1"), _page(page_rm, "p2")])
+    r.process_sync(st, [_page(page_rm, "p1", 0), _page(page_rm, "p2", 1)])
 
     paths = [p for p in vault.committed if p.endswith(".md")]
     assert len(paths) == 2
     assert len(set(paths)) == 2, f"pages overwrote each other: {paths}"
-    assert any("(p2)" in p for p in paths)
+    assert any(p.endswith(" p2.md") for p in paths), paths
 
 
 def test_recommitting_the_same_page_reuses_its_path(page_rm):
