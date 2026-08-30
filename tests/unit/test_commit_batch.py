@@ -252,3 +252,44 @@ def test_no_double_commit_across_batch_and_sync_paths():
     )
     assert state_mod.existing_note_path(st, "d1", "p1") == "Inbox/N/Note.md"
     assert state_mod.is_page_current(st, "d1", "p1", "h-p1")
+
+
+# ------------------------------------------------------ path disambiguation --
+
+
+def test_disambiguate_leaves_free_path_alone():
+    from rmsync.commit import disambiguate_path
+
+    assert disambiguate_path("a/b.md", set(), "1234abcd") == "a/b.md"
+
+
+def test_disambiguate_appends_page_discriminator():
+    from rmsync.commit import disambiguate_path
+
+    got = disambiguate_path("Inbox/Walden/Quotes.md", {"Inbox/Walden/Quotes.md"}, "6fdb83c9")
+    assert got == "Inbox/Walden/Quotes (6fdb83c9).md"
+
+
+def test_disambiguate_is_stable_for_the_same_page():
+    """The same page must keep the same filename across runs."""
+    from rmsync.commit import disambiguate_path
+
+    taken = {"x/y.md"}
+    a = disambiguate_path("x/y.md", taken, "abcd1234")
+    b = disambiguate_path("x/y.md", taken, "abcd1234")
+    assert a == b
+
+
+def test_claimed_paths_excludes_the_page_being_written():
+    st = state_mod.empty_state()
+    state_mod.record_page(
+        st, doc_id="d1", doc_hash="h", notebook="N", page_id="p1", page_hash="ph1",
+        note_path="a.md", status=state_mod.STATUS_COMMITTED, timestamp="t",
+    )
+    state_mod.record_page(
+        st, doc_id="d1", doc_hash="h", notebook="N", page_id="p2", page_hash="ph2",
+        note_path="b.md", status=state_mod.STATUS_COMMITTED, timestamp="t",
+    )
+    assert state_mod.claimed_paths(st) == {"a.md", "b.md"}
+    # A page re-committing to its own path must not collide with itself.
+    assert state_mod.claimed_paths(st, excluding=("d1", "p1")) == {"b.md"}

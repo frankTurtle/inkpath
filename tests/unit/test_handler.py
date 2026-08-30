@@ -144,3 +144,31 @@ def test_already_committed_page_is_not_recommitted(page_rm):
     r = _runner(_cfg(), StubProvider(), vault)
     r.process_sync(st, [_page(page_rm)])
     assert vault.committed == []
+
+
+def test_two_pages_with_the_same_title_do_not_overwrite(page_rm):
+    """Real bug: two Walden pages both titled "Walden Thoreau Quotes" resolved
+    to one path, and the second silently overwrote the first."""
+    st = state_mod.empty_state()
+    vault = StubVault()
+    r = _runner(_cfg(), StubProvider(), vault)
+    r.process_sync(st, [_page(page_rm, "p1"), _page(page_rm, "p2")])
+
+    paths = [p for p in vault.committed if p.endswith(".md")]
+    assert len(paths) == 2
+    assert len(set(paths)) == 2, f"pages overwrote each other: {paths}"
+    assert any("(p2)" in p for p in paths)
+
+
+def test_recommitting_the_same_page_reuses_its_path(page_rm):
+    """An edited page must update its own note, not spawn a duplicate."""
+    st = state_mod.empty_state()
+    vault = StubVault()
+    r = _runner(_cfg(), StubProvider(), vault)
+    r.process_sync(st, [_page(page_rm, "p1")])
+    first = list(vault.committed)
+
+    edited = _page(page_rm, "p1")
+    edited.page_hash = "h-p1-EDITED"
+    r.process_sync(st, [edited])
+    assert vault.committed[len(first):] == first  # same path rewritten

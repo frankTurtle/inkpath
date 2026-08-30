@@ -30,7 +30,13 @@ from . import providers
 from . import state as state_mod
 from .auth import get_secret, get_user_token
 from .batch import BedrockBatch, QueuedPage
-from .commit import GitHubVault, attachment_path, commit_message, note_path
+from .commit import (
+    GitHubVault,
+    attachment_path,
+    commit_message,
+    disambiguate_path,
+    note_path,
+)
 from .config import Config
 from .enrich import compose_note, sanitize_path_component
 from .fetch import diff_pages, download_pages, select_documents
@@ -192,7 +198,11 @@ class Runner:
             logger.info("Page %s already committed; skipping", page_id[:8])
             return
 
-        path = existing or note_path(self.cfg.vault_note_path, notebook, note.title)
+        path = existing or disambiguate_path(
+            note_path(self.cfg.vault_note_path, notebook, note.title),
+            state_mod.claimed_paths(st, excluding=(doc_id, page_id)),
+            page_id[:8],
+        )
 
         if self.cfg.dry_run:
             logger.info("DRY_RUN - would commit %s:\n%s", path, note.body)

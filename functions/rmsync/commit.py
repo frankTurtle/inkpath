@@ -112,5 +112,24 @@ def attachment_path(vault_note_path: str, notebook: str, title: str) -> str:
     return f"{vault_note_path}/{folder}/attachments/{name}.png"
 
 
+def disambiguate_path(path: str, taken: set[str], discriminator: str) -> str:
+    """Return a path that no other page has already claimed.
+
+    Two pages of the same notebook can easily yield the same title - a book's
+    notes often repeat a theme - and both would resolve to one path, silently
+    overwriting each other. The page id is a stable, deterministic
+    discriminator, so the same page keeps the same filename across runs.
+    """
+    if path not in taken:
+        return path
+    stem, _, ext = path.rpartition(".")
+    candidate = f"{stem} ({discriminator}).{ext}" if stem else f"{path} ({discriminator})"
+    suffix = 2
+    while candidate in taken:
+        candidate = f"{stem} ({discriminator}-{suffix}).{ext}"
+        suffix += 1
+    return candidate
+
+
 def commit_message(notebook: str, doc_id: str) -> str:
     return f"rm-sync: {notebook} ({doc_id[:8]})"

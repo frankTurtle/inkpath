@@ -190,6 +190,22 @@ def existing_note_path(state: dict[str, Any], doc_id: str, page_id: str) -> str 
     return rec.get("notePath") if rec else None
 
 
+def claimed_paths(state: dict[str, Any], *, excluding: tuple[str, str] | None = None) -> set[str]:
+    """Every note path already recorded, optionally excluding one (docId, pageId).
+
+    Used to keep two pages from resolving to the same file.
+    """
+    taken: set[str] = set()
+    for doc_id, doc in state.get("docs", {}).items():
+        for page_id, page in doc.get("pages", {}).items():
+            if excluding and (doc_id, page_id) == excluding:
+                continue
+            path = page.get("notePath")
+            if path:
+                taken.add(path)
+    return taken
+
+
 def learn_vocabulary(state: dict[str, Any], tags: list[str], title: str | None) -> None:
     """Grow the tag/title vocabulary so the model reuses tags instead of
     inventing near-duplicates."""
