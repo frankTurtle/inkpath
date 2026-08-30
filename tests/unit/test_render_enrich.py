@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import io
 
 import pytest
@@ -365,3 +366,21 @@ def test_unparseable_blob_raises_not_silently_empty():
     """A blob we cannot read at all must fail loudly, not look like a blank page."""
     with pytest.raises((ValueError, EOFError)):
         render_page(b"total garbage that is not any known format", width=800, blank_threshold=1)
+
+
+def test_created_is_an_unquoted_yaml_date():
+    """Obsidian treats a quoted 'created' as a string, not a date property."""
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="N", created="2026-08-30")
+    assert "created: 2026-08-30" in fm
+    assert "created: '2026-08-30'" not in fm
+    assert yaml.safe_load(fm.split("---")[1])["created"] == datetime.date(2026, 8, 30)
+
+
+def test_created_defaults_to_today_as_a_date():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="N")
+    assert isinstance(yaml.safe_load(fm.split("---")[1])["created"], datetime.date)
+
+
+def test_created_falls_back_gracefully_on_bad_input():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="N", created="not-a-date")
+    assert yaml.safe_load(fm.split("---")[1])["created"] == "not-a-date"

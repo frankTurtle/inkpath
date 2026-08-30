@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import yaml
 
@@ -49,12 +49,22 @@ def build_frontmatter(
     created: str | None = None,
 ) -> str:
     """YAML frontmatter Obsidian renders as properties."""
+    # A real date object, not a string: yaml.safe_dump quotes strings, and a
+    # quoted 'created' reads as a plain string in Obsidian rather than a date.
+    if created:
+        try:
+            created_value: object = date.fromisoformat(created)
+        except ValueError:
+            created_value = created
+    else:
+        created_value = datetime.now(UTC).date()
+
     data = {
         "tags": tags,
         "source": SOURCE,
         "rm_doc_id": doc_id,
         "rm_notebook": notebook,
-        "created": created or datetime.now(UTC).strftime("%Y-%m-%d"),
+        "created": created_value,
     }
     body = yaml.safe_dump(
         data, sort_keys=False, allow_unicode=True, default_flow_style=None

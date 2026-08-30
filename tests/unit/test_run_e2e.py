@@ -143,3 +143,23 @@ def test_lambda_handler_wraps_run(wired, monkeypatch):
     resp = app_mod.lambda_handler({}, None)
     assert resp["statusCode"] == 200
     assert json.loads(resp["body"])["commits"] == 1
+
+
+def test_info_logs_survive_a_preinstalled_root_handler():
+    """Lambda installs a root handler before import, making basicConfig a no-op.
+
+    If the level is not set directly, RUN_SUMMARY and the token counts vanish.
+    """
+    import importlib
+    import logging
+
+    root = logging.getLogger()
+    original = list(root.handlers), root.level
+    try:
+        root.handlers = [logging.NullHandler()]
+        root.setLevel(logging.WARNING)
+        importlib.reload(app_mod)
+        assert logging.getLogger("rmsync").isEnabledFor(logging.INFO)
+    finally:
+        root.handlers, root.level = original
+        importlib.reload(app_mod)

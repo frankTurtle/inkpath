@@ -38,11 +38,18 @@ from .remarkable import RemarkableClient
 from .render import render_page
 from .scope import resolve_scope
 
-logging.basicConfig(
-    level=os.environ.get("LOG_LEVEL", "INFO"),
-    format="%(levelname)s %(name)s %(message)s",
-)
+_LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO").upper()
+_root = logging.getLogger()
+if _root.handlers:
+    # The Lambda runtime installs a root handler before this module is imported,
+    # which makes logging.basicConfig() a silent no-op. Without setting the level
+    # directly, every INFO line - including RUN_SUMMARY and the token counts that
+    # make cost attributable from logs alone - is dropped.
+    _root.setLevel(_LOG_LEVEL)
+else:
+    logging.basicConfig(level=_LOG_LEVEL, format="%(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("rmsync")
+logger.setLevel(_LOG_LEVEL)
 for _noisy in ("botocore", "urllib3", "boto3"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
 
