@@ -172,6 +172,8 @@ Every knob is a deploy-time parameter — changing one is a redeploy, not a code
 |---|---|---|
 | `GitHubRepo` | placeholder | `owner/repo` of your **private** vault |
 | `VaultNotePath` | `Inbox/reMarkable` | Where notes land in the vault |
+| `CommitMode` | `direct` | `pull-request` opens and squash-merges a PR per sync |
+| `LinkMode` | `related` | `inline` autolinks concepts in the body; `both` does each |
 | `WatchFolder` | `MyReadingNotes` | Folder **name**, case-insensitive |
 | `WatchFolderId` | *(empty)* | Folder **UUID** — wins over the name; use it if names collide |
 | `IncludeNotebooks` | *(empty)* | Comma-separated allowlist |
@@ -251,6 +253,37 @@ vendors unchanged. Only the auth header differs, and it is chosen from the
 host: xAI takes `Authorization: Bearer`, Anthropic takes `x-api-key`. Going
 direct trades the IAM-only auth story for an API key in SSM and separate
 vendor billing.
+
+### Interlinking
+
+Obsidian's value is the link graph, so notes are linked three ways:
+
+1. **Hand-drawn links.** Anything you write as `[[double brackets]]` on the
+   tablet is preserved verbatim. The prompt calls this out explicitly.
+2. **A `Related` footer** (`LinkMode: related`, the default) — the model
+   suggests up to three existing note titles the page relates to.
+3. **Inline autolinking** (`LinkMode: inline` or `both`) — the first mention of
+   any existing note title is wrapped in `[[ ]]` inside the text.
+
+Inline linking is done **in code, not by the model**. Asked to wrap specific
+words, a small fast model simply ignores the instruction; exact matching costs
+no tokens, is deterministic, and can only ever produce links that resolve — so
+the graph never fills with unresolved stubs. A casing difference becomes an
+alias (`[[Optionality|optionality]]`) so the sentence still reads naturally, and
+links are capped at six per page.
+
+### Pull request mode
+
+`CommitMode: pull-request` collects a run's notes on a `rm-sync/<timestamp>`
+branch, opens a PR listing them, and squash-merges it — one reviewable entry per
+sync instead of a commit per page. The branch is only cut once there is
+something to commit, so a quiet poll leaves nothing behind, and **state is only
+saved after the merge succeeds**: until then the notes are not in the vault and
+the pages must be retried.
+
+This needs a PAT with **Pull requests: Read and write** in addition to
+**Contents: Read and write**. Fine-grained tokens treat these as separate
+permissions, and a Contents-only token fails at PR creation with a 403.
 
 ### Batch mode (optional, ~50% cheaper, up to 24h slower)
 

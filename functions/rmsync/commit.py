@@ -96,6 +96,80 @@ class GitHubVault:
         )
 
 
+    # ------------------------------------------------------- branches / PRs --
+
+    def default_branch_sha(self, base: str) -> str:
+        """Head commit SHA of the base branch."""
+        resp = self._session.get(
+            f"{API_ROOT}/repos/{self.repo}/git/ref/heads/{base}", timeout=HTTP_TIMEOUT
+        )
+        if not resp.ok:
+            raise CommitError(
+                f"Could not read branch {base!r} ({resp.status_code}): {resp.text[:200]}"
+            )
+        return resp.json()["object"]["sha"]
+
+    def create_branch(self, name: str, base: str) -> None:
+        """Branch off `base`. Tolerates the branch already existing."""
+        sha = self.default_branch_sha(base)
+        resp = self._session.post(
+            f"{API_ROOT}/repos/{self.repo}/git/refs",
+            json={"ref": f"refs/heads/{name}", "sha": sha},
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code == 422 and "already exists" in resp.text:
+            logger.info("Branch %s already exists; reusing it", name)
+            return
+        if not resp.ok:
+            raise CommitError(
+                f"Could not create branch {name!r} ({resp.status_code}): {resp.text[:200]}"
+            )
+        logger.info("Created branch %s from %s@%s", name, base, sha[:8])
+
+    def create_pull_request(self, *, head: str, base: str, title: str, body: str) -> int:
+        resp = self._session.post(
+            f"{API_ROOT}/repos/{self.repo}/pulls",
+            json={"title": title, "body": body, "head": head, "base": base},
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code == 403:
+            raise CommitError(
+                "Creating a pull request was forbidden. A fine-grained PAT needs "
+                "'Pull requests: Read and write' in addition to 'Contents: Read and "
+                f"write'. ({resp.text[:160]})"
+            )
+        if not resp.ok:
+            raise CommitError(
+                f"Could not open a pull request ({resp.status_code}): {resp.text[:200]}"
+            )
+        number = int(resp.json()["number"])
+        logger.info("Opened pull request #%d (%s -> %s)", number, head, base)
+        return number
+
+    def merge_pull_request(self, number: int, *, message: str) -> bool:
+        resp = self._session.put(
+            f"{API_ROOT}/repos/{self.repo}/pulls/{number}/merge",
+            json={"merge_method": "squash", "commit_title": message},
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.ok:
+            logger.info("Merged pull request #%d", number)
+            return True
+        # 405 means not mergeable (e.g. required reviews); leave it open for a human.
+        raise CommitError(
+            f"Could not merge pull request #{number} ({resp.status_code}): "
+            f"{resp.text[:200]}"
+        )
+
+    def delete_branch(self, name: str) -> None:
+        """Best effort - a leftover branch is untidy, never harmful."""
+        resp = self._session.delete(
+            f"{API_ROOT}/repos/{self.repo}/git/refs/heads/{name}", timeout=HTTP_TIMEOUT
+        )
+        if not resp.ok:
+            logger.warning("Could not delete branch %s (%s)", name, resp.status_code)
+
+
 def note_path(vault_note_path: str, notebook: str, title: str) -> str:
     from .enrich import sanitize_path_component
 

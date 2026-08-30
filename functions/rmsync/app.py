@@ -136,10 +136,12 @@ class Runner:
             "commits": 0,
             "inputTokens": 0,
             "outputTokens": 0,
+            "pullRequests": 0,
             "batchQueued": 0,
             "batchReconciled": 0,
             "errors": 0,
         }
+        self.committed_notes: list[str] = []
         self._vault: GitHubVault | None = None
         self._provider: providers.VisionProvider | None = None
 
@@ -166,6 +168,7 @@ class Runner:
                 self.cfg.ai_model_id,
                 api_key=api_key,
                 base_url=self.cfg.ai_base_url,
+                link_mode=self.cfg.link_mode,
             )
         return self._provider
 
@@ -215,6 +218,7 @@ class Runner:
             )
 
         self.stats["commits"] += 1
+        self.committed_notes.append(path)
         state_mod.record_page(
             st,
             doc_id=doc_id,
@@ -271,6 +275,8 @@ class Runner:
                     page_index=page.page_index,
                     min_text_length=self.cfg.min_text_length,
                     attachment_name=f"{attachment}.png",
+                    link_mode=self.cfg.link_mode,
+                    known_titles=st.get("noteTitles", []),
                 )
                 self.stats["inputTokens"] += note.input_tokens
                 self.stats["outputTokens"] += note.output_tokens
@@ -292,6 +298,34 @@ class Runner:
                     page.page_id[:8],
                     page.notebook,
                 )
+
+    # ------------------------------------------------------- pull requests --
+
+    def open_branch(self, stamp: str) -> str:
+        """Start a run branch and point the vault at it."""
+        branch = f"rm-sync/{stamp}"
+        self.vault.create_branch(branch, self.cfg.github_branch)
+        self.vault.branch = branch
+        return branch
+
+    def finish_pull_request(self, branch: str, notes: list[str]) -> None:
+        """Open and squash-merge the run's PR.
+
+        Raises on failure so the caller skips the state write: until this merges,
+        the notes are not in the vault and the pages must be retried.
+        """
+        listed = "\n".join(f"- `{path}`" for path in sorted(notes))
+        body = (
+            f"Synced {len(notes)} page(s) from reMarkable.\n\n{listed}\n\n"
+            "_Opened automatically by inkpath._"
+        )
+        title = f"rm-sync: {len(notes)} note(s)"
+        number = self.vault.create_pull_request(
+            head=branch, base=self.cfg.github_branch, title=title, body=body
+        )
+        self.vault.merge_pull_request(number, message=title)
+        self.vault.delete_branch(branch)
+        self.stats["pullRequests"] += 1
 
     # ------------------------------------------------------ batch pipeline --
 
@@ -327,6 +361,8 @@ class Runner:
             page_index=record["page_index"],
             min_text_length=self.cfg.min_text_length,
             attachment_name=f"{attachment}.png",
+            link_mode=self.cfg.link_mode,
+            known_titles=st.get("noteTitles", []),
         )
         self.commit_note(
             st,
@@ -521,10 +557,27 @@ def run(event: dict[str, Any], cfg: Config | None = None) -> dict[str, int]:
 
     if pending:
         pages = download_pages(client, pending, cfg)
+
+        # A branch is only cut once there is genuinely something to commit, so a
+        # quiet poll leaves no branches and no empty pull requests behind.
+        branch = ""
+        use_pr = cfg.commit_mode == "pull-request" and not cfg.dry_run
+        if use_pr:
+            branch = runner.open_branch(_now_iso().replace(":", "").replace("-", ""))
+
         if cfg.batch_mode == "none":
             runner.process_sync(st, pages)
         else:
             runner.process_batch(st, pages)
+
+        if use_pr:
+            if runner.committed_notes:
+                # Raises on failure, which skips the state write below so the
+                # pages are retried: until this merges they are not in the vault.
+                runner.finish_pull_request(branch, runner.committed_notes)
+            else:
+                logger.info("Nothing was committed; discarding branch %s", branch)
+                runner.vault.delete_branch(branch)
     else:
         logger.info("No changed pages: zero model calls, zero commits")
 

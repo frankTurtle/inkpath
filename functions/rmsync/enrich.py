@@ -15,6 +15,9 @@ from .providers import ProviderResult, sanitize_tags
 logger = logging.getLogger(__name__)
 
 NEEDS_REVIEW_TAG = "needs-review"
+# Below this a title is too generic to autolink safely ("ERE", "p.11").
+MIN_AUTOLINK_LEN = 5
+MAX_AUTOLINKS = 6
 SOURCE = "reMarkable"
 _UNSAFE_PATH_RE = re.compile(r"[^A-Za-z0-9 _.\-]")
 
@@ -39,6 +42,37 @@ def sanitize_path_component(raw: str, *, fallback: str = "untitled") -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
     cleaned = cleaned[:80].strip(" .")
     return cleaned or fallback
+
+
+def autolink(text: str, titles: list[str], *, max_links: int = MAX_AUTOLINKS) -> str:
+    """Wrap the first mention of each existing note title in [[wikilinks]].
+
+    Done in code rather than by the model: asked to wrap specific words, a small
+    model simply ignores the instruction, whereas exact matching is free,
+    deterministic, and can only ever produce links that actually resolve.
+
+    Longest titles match first, spans already inside [[...]] are left alone, and
+    a casing difference becomes an alias so the sentence still reads naturally.
+    """
+    if not text or not titles:
+        return text
+
+    linked = 0
+    for title in sorted(set(titles), key=len, reverse=True):
+        if linked >= max_links or len(title) < MIN_AUTOLINK_LEN:
+            continue
+        # Skip anything already inside a wikilink.
+        spans = [m.span() for m in re.finditer(r"\[\[[^\]]*\]\]", text)]
+        pattern = re.compile(rf"(?<![\w\[]){re.escape(title)}(?![\w\]])", re.IGNORECASE)
+        for match in pattern.finditer(text):
+            if any(start <= match.start() < end for start, end in spans):
+                continue
+            found = match.group(0)
+            replacement = f"[[{title}]]" if found == title else f"[[{title}|{found}]]"
+            text = text[: match.start()] + replacement + text[match.end() :]
+            linked += 1
+            break
+    return text
 
 
 def build_frontmatter(
@@ -81,6 +115,8 @@ def compose_note(
     min_text_length: int = 20,
     attachment_name: str | None = None,
     created: str | None = None,
+    link_mode: str = "related",
+    known_titles: list[str] | None = None,
 ) -> Note:
     """Assemble frontmatter + body from a provider result."""
     # Sanitize here too, not only in parse_response: composition is the last
@@ -107,15 +143,21 @@ def compose_note(
 
     title = result.title.strip() or f"{notebook} p{page_index + 1}"
 
+    body_text = result.text.strip()
+    if link_mode in ("inline", "both") and known_titles:
+        # Never link a note to itself.
+        others = [t for t in known_titles if t != title]
+        body_text = autolink(body_text, others)
+
     parts = [
         build_frontmatter(tags=tags, doc_id=doc_id, notebook=notebook, created=created)
     ]
     parts.append(f"\n# {title}\n\n")
-    if result.text.strip():
-        parts.append(result.text.strip() + "\n")
+    if body_text:
+        parts.append(body_text + "\n")
     if attach and attachment_name:
         parts.append(f"\n![[{attachment_name}]]\n")
-    if result.links:
+    if result.links and link_mode in ("related", "both"):
         links = " ".join(f"[[{link}]]" for link in result.links)
         parts.append(f"\n## Related\n\n{links}\n")
 

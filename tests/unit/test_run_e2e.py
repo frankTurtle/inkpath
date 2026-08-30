@@ -174,3 +174,113 @@ def test_dry_run_does_not_persist_state(wired):
     stats = app_mod.run({}, _cfg())
     assert stats["commits"] == 1
     assert wired["saved"]["state"]["docs"]["d1"]["pages"]["p1"]["status"] == "committed"
+
+
+# ------------------------------------------------------------ PR commit mode --
+
+
+class PRVault(FakeVault):
+    """Records the branch/PR lifecycle so ordering can be asserted."""
+
+    def __init__(self, merge_fails=False, pr_forbidden=False):
+        super().__init__()
+        self.branch = "main"
+        self.calls: list[str] = []
+        self.merge_fails = merge_fails
+        self.pr_forbidden = pr_forbidden
+        self.merged: list[int] = []
+
+    def create_branch(self, name, base):
+        self.calls.append(f"create_branch:{name}")
+
+    def create_pull_request(self, *, head, base, title, body):
+        from rmsync.commit import CommitError
+
+        if self.pr_forbidden:
+            raise CommitError("Creating a pull request was forbidden")
+        self.calls.append(f"create_pr:{head}->{base}")
+        self.pr_body = body
+        return 7
+
+    def merge_pull_request(self, number, *, message):
+        from rmsync.commit import CommitError
+
+        if self.merge_fails:
+            raise CommitError("not mergeable")
+        self.calls.append(f"merge:{number}")
+        self.merged.append(number)
+        return True
+
+    def delete_branch(self, name):
+        self.calls.append(f"delete_branch:{name}")
+
+
+def _pr_wired(monkeypatch, wired, vault):
+    original = app_mod.Runner.__init__
+
+    def patched(self, cfg):
+        original(self, cfg)
+        self._vault = vault
+        self._provider = type(
+            "P", (), {"extract_and_tag": lambda s, p, t, ti=None: ProviderResult(
+                text="x" * 60, tags=["t"], title="A Title")}
+        )()
+
+    monkeypatch.setattr(app_mod.Runner, "__init__", patched)
+
+
+def test_pr_mode_branches_commits_merges_then_saves_state(wired, monkeypatch):
+    vault = PRVault()
+    _pr_wired(monkeypatch, wired, vault)
+    stats = app_mod.run({}, _cfg(commit_mode="pull-request"))
+
+    assert stats["commits"] == 1 and stats["pullRequests"] == 1
+    order = [c.split(":")[0] for c in vault.calls]
+    assert order == ["create_branch", "create_pr", "merge", "delete_branch"]
+    # Notes were committed to the run branch, not straight to main.
+    assert vault.branch.startswith("rm-sync/")
+    assert "state" in wired["saved"]
+
+
+def test_pr_body_lists_the_notes(wired, monkeypatch):
+    vault = PRVault()
+    _pr_wired(monkeypatch, wired, vault)
+    app_mod.run({}, _cfg(commit_mode="pull-request"))
+    assert "Inbox/reMarkable/Antifragile/A Title.md" in vault.pr_body
+    assert "Synced 1 page(s)" in vault.pr_body
+
+
+def test_failed_merge_does_not_advance_state(wired, monkeypatch):
+    """Until the PR merges the notes are not in the vault, so the pages must
+    be retried rather than recorded as done."""
+    vault = PRVault(merge_fails=True)
+    _pr_wired(monkeypatch, wired, vault)
+    with pytest.raises(Exception, match="not mergeable"):
+        app_mod.run({}, _cfg(commit_mode="pull-request"))
+    assert "state" not in wired["saved"]
+
+
+def test_missing_pr_permission_surfaces_clearly(wired, monkeypatch):
+    vault = PRVault(pr_forbidden=True)
+    _pr_wired(monkeypatch, wired, vault)
+    with pytest.raises(Exception, match="forbidden"):
+        app_mod.run({}, _cfg(commit_mode="pull-request"))
+    assert "state" not in wired["saved"]
+
+
+def test_quiet_poll_opens_no_branch_and_no_pr(wired, monkeypatch):
+    """A run with nothing new must leave no branches or empty PRs behind."""
+    vault = PRVault()
+    _pr_wired(monkeypatch, wired, vault)
+    app_mod.run({}, _cfg(commit_mode="pull-request"))   # first run commits
+    vault.calls.clear()
+    stats = app_mod.run({}, _cfg(commit_mode="pull-request"))
+    assert stats["commits"] == 0 and stats["pullRequests"] == 0
+    assert vault.calls == []
+
+
+def test_dry_run_never_opens_a_pr(wired, monkeypatch):
+    vault = PRVault()
+    _pr_wired(monkeypatch, wired, vault)
+    app_mod.run({}, _cfg(commit_mode="pull-request", dry_run=True))
+    assert vault.calls == []

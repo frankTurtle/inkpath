@@ -40,10 +40,11 @@ def _additional_fields(model_id: str) -> dict:
 
 
 class BedrockProvider:
-    def __init__(self, model_id: str, *, client=None) -> None:
+    def __init__(self, model_id: str, *, client=None, link_mode: str = "related") -> None:
         if not model_id:
             raise ValueError("AiModelId is required for the bedrock provider")
         self.model_id = model_id
+        self.link_mode = link_mode
         self._explicit_client = client
 
     @property
@@ -104,7 +105,7 @@ class BedrockProvider:
         existing_tags: list[str],
         existing_titles: list[str] | None = None,
     ) -> ProviderResult:
-        prompt = build_prompt(existing_tags, existing_titles)
+        prompt = build_prompt(existing_tags, existing_titles, self.link_mode)
         raw, tin, tout = self._converse(image_bytes, prompt)
         try:
             result = parse_response(raw)

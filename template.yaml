@@ -9,11 +9,11 @@ Metadata:
   AWS::CloudFormation::Interface:
     ParameterGroups:
       - Label: {default: "Vault (GitHub) target"}
-        Parameters: [GitHubRepo, GitHubBranch, VaultNotePath]
+        Parameters: [GitHubRepo, GitHubBranch, VaultNotePath, CommitMode]
       - Label: {default: "reMarkable scoping"}
         Parameters: [WatchFolder, WatchFolderId, IncludeNotebooks, ExcludeNotebooks]
       - Label: {default: "AI provider"}
-        Parameters: [AiProvider, AiModelId, AiBaseUrl, BedrockModelArnPattern]
+        Parameters: [AiProvider, AiModelId, AiBaseUrl, LinkMode, BedrockModelArnPattern]
       - Label: {default: "Batch inference (optional, ~50% cheaper, adds latency)"}
         Parameters: [BatchMode, BatchMinRecords, BatchMaxWaitDays]
       - Label: {default: "Run behaviour and cost guardrails"}
@@ -37,6 +37,15 @@ Parameters:
     Description: Path inside the vault repo where notes are written.
 
   # ------------------------------------------------------------- scoping ----
+  CommitMode:
+    Type: String
+    Default: direct
+    AllowedValues: [direct, pull-request]
+    Description: >
+      "direct" commits straight to GitHubBranch. "pull-request" collects each
+      run's notes on a branch, opens a PR and squash-merges it, so the vault
+      gets one reviewable entry per sync instead of a commit per page. A PR run
+      needs a PAT with "Pull requests: Read and write" as well as Contents.
   WatchFolder:
     Type: String
     Default: "MyReadingNotes"
@@ -90,6 +99,15 @@ Parameters:
       across regions. Tighten to a specific model ARN if you do not swap models.
 
   # ------------------------------------------------------------- batching ----
+  LinkMode:
+    Type: String
+    Default: related
+    AllowedValues: [related, inline, both]
+    Description: >
+      How notes are interlinked. "related" appends a Related section of
+      [[wikilinks]] to existing notes. "inline" instead wraps key concepts in
+      [[brackets]] inside the text itself. "both" does each. Hand-drawn [[ ]]
+      on the page are always preserved regardless of this setting.
   BatchMode:
     Type: String
     Default: none
@@ -222,6 +240,7 @@ Resources:
           GITHUB_REPO: !Ref GitHubRepo
           GITHUB_BRANCH: !Ref GitHubBranch
           VAULT_NOTE_PATH: !Ref VaultNotePath
+          COMMIT_MODE: !Ref CommitMode
           WATCH_FOLDER: !Ref WatchFolder
           WATCH_FOLDER_ID: !Ref WatchFolderId
           INCLUDE_NOTEBOOKS: !Ref IncludeNotebooks
@@ -229,6 +248,7 @@ Resources:
           AI_PROVIDER: !Ref AiProvider
           AI_MODEL_ID: !Ref AiModelId
           AI_BASE_URL: !Ref AiBaseUrl
+          LINK_MODE: !Ref LinkMode
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

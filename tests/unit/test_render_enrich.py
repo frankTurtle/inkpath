@@ -384,3 +384,140 @@ def test_created_defaults_to_today_as_a_date():
 def test_created_falls_back_gracefully_on_bad_input():
     fm = build_frontmatter(tags=["a"], doc_id="d", notebook="N", created="not-a-date")
     assert yaml.safe_load(fm.split("---")[1])["created"] == "not-a-date"
+
+
+# ------------------------------------------------------------- link modes --
+
+
+def test_prompt_preserves_hand_drawn_brackets():
+    """Writing [[ ]] on the tablet is a deliberate link; never strip it."""
+    from rmsync.providers.base import build_prompt
+
+    assert "drew [[double brackets]]" in build_prompt([], [])
+
+
+def test_related_mode_has_no_inline_instruction():
+    from rmsync.providers.base import build_prompt
+
+    assert "INLINE LINKS" not in build_prompt([], [], "related")
+
+
+@pytest.mark.parametrize("mode", ["inline", "both"])
+def test_inline_modes_request_inline_links(mode):
+    from rmsync.providers.base import build_prompt
+
+    p = build_prompt([], ["Optionality"], mode)
+    assert "INLINE LINKS" in p
+    assert "At most 6 per page" in p
+    assert "Optionality" in p          # existing titles offered for exact reuse
+
+
+def test_inline_links_survive_parsing():
+    """Brackets inside `text` must reach the note untouched."""
+    r = parse_response(
+        '{"text":"Learning [[Via negativa]] beats adding.","tags":["a"],'
+        '"title":"T","links":[]}'
+    )
+    assert "[[Via negativa]]" in r.text
+
+
+def test_provider_passes_link_mode_to_prompt():
+    captured = {}
+
+    class Capture(FakeBedrockClient):
+        def converse(self, **kw):
+            captured["prompt"] = kw["messages"][0]["content"][1]["text"]
+            return super().converse(**kw)
+
+    BedrockProvider("m", client=Capture(), link_mode="both").extract_and_tag(b"png", [])
+    assert "INLINE LINKS" in captured["prompt"]
+
+
+# ------------------------------------------------------------- autolinking --
+
+
+def test_autolink_wraps_first_mention_only():
+    from rmsync.enrich import autolink
+
+    out = autolink("Optionality matters. Optionality again.", ["Optionality"])
+    assert out.count("[[Optionality]]") == 1
+    assert out.endswith("Optionality again.")
+
+
+def test_autolink_uses_alias_when_casing_differs():
+    from rmsync.enrich import autolink
+
+    out = autolink("He praised optionality here.", ["Optionality"])
+    assert "[[Optionality|optionality]]" in out
+
+
+def test_autolink_never_double_links():
+    from rmsync.enrich import autolink
+
+    out = autolink("See [[Optionality]] and Optionality.", ["Optionality"])
+    assert out.count("[[") == 1 or "[[Optionality|" not in out
+
+
+def test_autolink_prefers_longest_title():
+    from rmsync.enrich import autolink
+
+    out = autolink("Read about Via negativa thinking.", ["Via", "Via negativa"])
+    assert "[[Via negativa]]" in out
+
+
+def test_autolink_skips_short_titles():
+    from rmsync.enrich import autolink
+
+    assert autolink("ERE is a book.", ["ERE"]) == "ERE is a book."
+
+
+def test_autolink_respects_word_boundaries():
+    from rmsync.enrich import autolink
+
+    assert autolink("Optionalityism", ["Optionality"]) == "Optionalityism"
+
+
+def test_autolink_caps_total_links():
+    from rmsync.enrich import autolink
+
+    titles = [f"Concept{i:02d}" for i in range(20)]
+    text = " ".join(titles)
+    assert autolink(text, titles).count("[[") == 6
+
+
+def test_compose_note_autolinks_in_inline_mode():
+    note = compose_note(
+        ProviderResult(text="Thinking about Optionality today and more text here.",
+                       tags=["t"], title="New Note"),
+        doc_id="d", notebook="N", page_index=0,
+        link_mode="inline", known_titles=["Optionality"],
+    )
+    assert "[[Optionality]]" in note.body
+
+
+def test_related_mode_does_not_autolink():
+    note = compose_note(
+        ProviderResult(text="Thinking about Optionality today and more text here.",
+                       tags=["t"], title="New Note"),
+        doc_id="d", notebook="N", page_index=0,
+        link_mode="related", known_titles=["Optionality"],
+    )
+    assert "[[Optionality]]" not in note.body
+
+
+def test_note_never_links_to_itself():
+    note = compose_note(
+        ProviderResult(text="Optionality is the subject of this whole page here.",
+                       tags=["t"], title="Optionality"),
+        doc_id="d", notebook="N", page_index=0,
+        link_mode="inline", known_titles=["Optionality"],
+    )
+    assert "[[Optionality]]" not in note.body
+
+
+def test_inline_mode_omits_related_section():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["t"], title="T", links=["Other"]),
+        doc_id="d", notebook="N", page_index=0, link_mode="inline",
+    )
+    assert "## Related" not in note.body

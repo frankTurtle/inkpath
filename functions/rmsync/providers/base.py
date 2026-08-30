@@ -73,10 +73,31 @@ def sanitize_tags(raw_tags: list[str] | None) -> list[str]:
     return seen
 
 
-def build_prompt(existing_tags: list[str], existing_titles: list[str] | None = None) -> str:
+LINK_MODES = {"related", "inline", "both"}
+
+_INLINE_RULE = """
+  INLINE LINKS: inside "text", wrap the page's key concepts in [[double
+  brackets]] so they become Obsidian links. Rules:
+    - Link concepts and proper nouns worth their own note (ideas, people,
+      books, techniques). Never link ordinary words.
+    - At most 6 per page. Fewer is better than more; a page where everything
+      is a link is a page where nothing is.
+    - When a concept matches an existing note title below, use that title
+      EXACTLY so the link resolves instead of creating a near-duplicate.
+    - Link a given concept only on its first occurrence.
+    - Keep the surrounding sentence unchanged - you are wrapping words that are
+      already there, never inserting new ones."""
+
+
+def build_prompt(
+    existing_tags: list[str],
+    existing_titles: list[str] | None = None,
+    link_mode: str = "related",
+) -> str:
     """Prompt for the combined transcribe + tag + link call."""
     vocab = ", ".join(existing_tags[-80:]) if existing_tags else "(none yet)"
     titles = ", ".join(f'"{t}"' for t in (existing_titles or [])[-60:]) or "(none yet)"
+    inline_rule = _INLINE_RULE if link_mode in ("inline", "both") else ""
     return f"""You are transcribing one handwritten page from a reMarkable tablet into an Obsidian note.
 
 Return ONLY a single JSON object. No preamble, no explanation, no markdown code fences.
@@ -84,6 +105,8 @@ Return ONLY a single JSON object. No preamble, no explanation, no markdown code 
 The JSON object must have exactly these keys:
   "text":  string. The transcribed handwriting as Markdown. Preserve list and
            heading structure. Use "" if the page has no legible handwriting.
+           If the writer drew [[double brackets]] around anything by hand,
+           keep them exactly - that is a deliberate Obsidian link.{inline_rule}
   "tags":  array of 2-5 short topical tags, lowercase, no spaces, no "#".
            STRONGLY prefer reusing tags from the existing vocabulary below over
            inventing near-duplicates.

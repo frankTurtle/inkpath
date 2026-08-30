@@ -41,6 +41,7 @@ class Config:
     github_repo: str = ""
     github_branch: str = "main"
     vault_note_path: str = "Inbox/reMarkable"
+    commit_mode: str = "direct"
 
     watch_folder: str = ""
     watch_folder_id: str = ""
@@ -50,6 +51,7 @@ class Config:
     ai_provider: str = "bedrock"
     ai_model_id: str = ""
     ai_base_url: str = ""
+    link_mode: str = "related"
 
     batch_mode: str = "none"
     batch_min_records: int = 100
@@ -70,6 +72,7 @@ class Config:
             github_repo=os.environ.get("GITHUB_REPO", ""),
             github_branch=os.environ.get("GITHUB_BRANCH", "main"),
             vault_note_path=os.environ.get("VAULT_NOTE_PATH", "Inbox/reMarkable").strip("/"),
+            commit_mode=os.environ.get("COMMIT_MODE", "direct").strip(),
             watch_folder=os.environ.get("WATCH_FOLDER", "").strip(),
             watch_folder_id=os.environ.get("WATCH_FOLDER_ID", "").strip(),
             include_notebooks=_csv("INCLUDE_NOTEBOOKS"),
@@ -77,6 +80,7 @@ class Config:
             ai_provider=os.environ.get("AI_PROVIDER", "bedrock").strip(),
             ai_model_id=os.environ.get("AI_MODEL_ID", "").strip(),
             ai_base_url=os.environ.get("AI_BASE_URL", "").strip(),
+            link_mode=os.environ.get("LINK_MODE", "related").strip(),
             batch_mode=os.environ.get("BATCH_MODE", "none").strip(),
             batch_min_records=_int("BATCH_MIN_RECORDS", 100),
             batch_max_wait_days=_int("BATCH_MAX_WAIT_DAYS", 14),
@@ -105,6 +109,14 @@ class Config:
             raise ConfigError(
                 "One of WatchFolder or WatchFolderId is required. Running unscoped "
                 "would OCR your entire reMarkable library in a single execution."
+            )
+        if self.link_mode not in {"related", "inline", "both"}:
+            raise ConfigError(
+                f"Unknown LinkMode {self.link_mode!r}; expected related, inline or both"
+            )
+        if self.commit_mode not in {"direct", "pull-request"}:
+            raise ConfigError(
+                f"Unknown CommitMode {self.commit_mode!r}; expected 'direct' or 'pull-request'"
             )
         if self.batch_mode not in {"none", "bedrock-batch", "direct-batch"}:
             raise ConfigError(f"Unknown BatchMode {self.batch_mode!r}")

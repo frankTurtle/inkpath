@@ -61,6 +61,7 @@ class DirectApiProvider:
         *,
         base_url: str = DEFAULT_BASE_URL,
         session: requests.Session | None = None,
+        link_mode: str = "related",
     ) -> None:
         if not model_id:
             raise ValueError("AiModelId is required for the direct provider")
@@ -69,6 +70,7 @@ class DirectApiProvider:
                 "AiProvider=direct requires an API key in SSM at /rmsync/ai-api-key"
             )
         self.model_id = model_id
+        self.link_mode = link_mode
         self._base_url = _messages_url(base_url or DEFAULT_BASE_URL)
         self._session = session or requests.Session()
         self._session.headers.update(
@@ -117,7 +119,7 @@ class DirectApiProvider:
         existing_tags: list[str],
         existing_titles: list[str] | None = None,
     ) -> ProviderResult:
-        prompt = build_prompt(existing_tags, existing_titles)
+        prompt = build_prompt(existing_tags, existing_titles, self.link_mode)
         raw, tin, tout = self._call(image_bytes, prompt)
         try:
             result = parse_response(raw)
