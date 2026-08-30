@@ -130,3 +130,32 @@ def test_download_attaches_blob_data():
     pending, _ = diff_pages(client, [_doc()], st, _cfg())
     pages = download_pages(client, pending, _cfg())
     assert pages[0].data == b"BLOB:p1.rm"
+
+
+def test_duplicate_page_ids_are_processed_once():
+    """cPages can list the same page twice (copied/redirected pages).
+
+    Without dedupe the page is rendered and sent to the model several times in
+    one run - duplicated cost and duplicated commits.
+    """
+    st = state_mod.empty_state()
+    content = {"cPages": {"pages": [{"id": "pA"}, {"id": "pA"}, {"id": "pB"}]}}
+    client = FakeClient({"pA": "hA", "pB": "hB"}, content=content)
+    pending, _ = diff_pages(client, [_doc()], st, _cfg())
+    assert [p.page_id for p in pending] == ["pA", "pB"]
+
+
+def test_deleted_pages_are_skipped():
+    st = state_mod.empty_state()
+    content = {"cPages": {"pages": [{"id": "pA"}, {"id": "pB", "deleted": True}]}}
+    client = FakeClient({"pA": "hA", "pB": "hB"}, content=content)
+    pending, _ = diff_pages(client, [_doc()], st, _cfg())
+    assert [p.page_id for p in pending] == ["pA"]
+
+
+def test_fallback_order_has_no_duplicates():
+    st = state_mod.empty_state()
+    client = FakeClient({"pB": "hB", "pA": "hA"}, content=None)
+    pending, _ = diff_pages(client, [_doc()], st, _cfg())
+    ids = [p.page_id for p in pending]
+    assert ids == sorted(set(ids))

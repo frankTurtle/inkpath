@@ -20,3 +20,8 @@ def page_rm() -> bytes:
 @pytest.fixture
 def blank_rm() -> bytes:
     return (FIXTURES / "synthetic_blank.rm").read_bytes()
+
+
+@pytest.fixture
+def legacy_v5_rm() -> bytes:
+    return (FIXTURES / "synthetic_legacy_v5.rm").read_bytes()

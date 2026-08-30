@@ -11,7 +11,7 @@ from rmsync.providers import ProviderResult, parse_response, sanitize_tag, sanit
 from rmsync.providers.base import fallback_result
 from rmsync.providers.bedrock import BedrockProvider
 from rmsync.providers.direct_api import DirectApiProvider
-from rmsync.render import render_page, stroke_count
+from rmsync.render import parse_lines, render_page, stroke_count
 
 # --------------------------------------------------------------- rendering --
 
@@ -316,3 +316,52 @@ def test_registry_passes_base_url_to_direct_provider():
 
     p = get_provider("direct", "grok-4.6", api_key="k", base_url="https://api.x.ai")
     assert p._base_url == "https://api.x.ai/v1/messages"
+
+
+# ----------------------------------------------------- legacy .lines format --
+
+
+def test_render_parses_legacy_v5(legacy_v5_rm):
+    """Notebooks on older firmware stay v5 forever; rmscene only reads v6."""
+    assert stroke_count(legacy_v5_rm) == 5
+    png = render_page(legacy_v5_rm, width=1400, blank_threshold=3)
+    assert png is not None and png.startswith(b"\x89PNG")
+
+
+def test_legacy_v5_matches_v6_geometry(legacy_v5_rm, page_rm):
+    """v5 x is absolute, v6 x is centred on 0. Normalising means the same
+    drawing renders identically from either format."""
+    v5 = Image.open(io.BytesIO(render_page(legacy_v5_rm, width=1400, blank_threshold=3)))
+    v6 = Image.open(io.BytesIO(render_page(page_rm, width=1400, blank_threshold=3)))
+    assert v5.size == v6.size
+
+
+def test_wrong_legacy_version_raises_not_blank():
+    """A v9 header must not be mistaken for an empty page."""
+    with pytest.raises(ValueError, match="header"):
+        render_page(
+            b"reMarkable .lines file, version=9          " + b"\x00" * 32,
+            width=800,
+            blank_threshold=1,
+        )
+
+
+def test_legacy_version_detection():
+    from rmsync.render import _legacy_version
+
+    assert _legacy_version(b"reMarkable .lines file, version=5          " + b"\x00") == 5
+    assert _legacy_version(b"reMarkable .lines file, version=3          " + b"\x00") == 3
+    assert _legacy_version(b"reMarkable .lines file, version=9          " + b"\x00") is None
+    assert _legacy_version(b"not a lines file") is None
+
+
+def test_legacy_truncated_blob_keeps_what_parsed(legacy_v5_rm):
+    """A truncated page should not lose every stroke that did parse."""
+    truncated = legacy_v5_rm[: len(legacy_v5_rm) // 2]
+    assert 0 < len(parse_lines(truncated)) < 5
+
+
+def test_unparseable_blob_raises_not_silently_empty():
+    """A blob we cannot read at all must fail loudly, not look like a blank page."""
+    with pytest.raises((ValueError, EOFError)):
+        render_page(b"total garbage that is not any known format", width=800, blank_threshold=1)

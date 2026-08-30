@@ -12,6 +12,7 @@ from __future__ import annotations
 import io
 import math
 import pathlib
+import struct
 from uuid import UUID
 
 from rmscene import (
@@ -83,13 +84,42 @@ def build(n_lines: int) -> bytes:
     return buf.getvalue()
 
 
+# --------------------------------------------------------------- legacy v5 --
+
+LEGACY_HEADER_V5 = b"reMarkable .lines file, version=5          "
+
+
+def build_legacy_v5(n_lines: int) -> bytes:
+    """A pre-v6 `.lines` page.
+
+    Notebooks created on older firmware keep this format forever, so the
+    renderer must handle it. Note v5 x coordinates are absolute (0..1404), not
+    centred on 0 like v6.
+    """
+    out = bytearray(LEGACY_HEADER_V5)
+    assert len(out) == 43, len(out)
+    out += struct.pack("<I", 1)              # one layer
+    out += struct.pack("<I", n_lines)
+    for i in range(n_lines):
+        pts = [(802.0 + j * 10, 100.0 + i * 40 + 8 * math.sin(j / 2)) for j in range(20)]
+        # pen, colour, unknown, width, unknown, n_points
+        out += struct.pack("<IIIfII", 4, 0, 0, 2.0, 0, len(pts))
+        for x, y in pts:
+            out += struct.pack("<ffffff", x, y, 1.0, 0.0, 2.0, 0.5)
+    return bytes(out)
+
+
 def main() -> None:
     here = pathlib.Path(__file__).parent
     # 5 strokes: a normal page. 1 stroke: below BlankPageThreshold, so it must
     # be skipped before any model call.
     (here / "synthetic_page.rm").write_bytes(build(5))
     (here / "synthetic_blank.rm").write_bytes(build(1))
-    print("wrote synthetic_page.rm (5 strokes) and synthetic_blank.rm (1 stroke)")
+    (here / "synthetic_legacy_v5.rm").write_bytes(build_legacy_v5(5))
+    print(
+        "wrote synthetic_page.rm (v6, 5 strokes), synthetic_blank.rm (v6, 1 stroke) "
+        "and synthetic_legacy_v5.rm (v5, 5 strokes)"
+    )
 
 
 if __name__ == "__main__":

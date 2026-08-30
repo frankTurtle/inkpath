@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import logging
+import struct
 
 from PIL import Image, ImageDraw
 from rmscene import SceneLineItemBlock, read_blocks
@@ -36,15 +37,113 @@ SKIP_TOOLS = {si.Pen.ERASER, si.Pen.ERASER_AREA}
 HIGHLIGHTER_TOOLS = {si.Pen.HIGHLIGHTER_1, si.Pen.HIGHLIGHTER_2}
 
 
-def parse_lines(data: bytes) -> list[si.Line]:
-    """Extract drawable lines from a `.rm` v6 blob."""
+# Pre-v6 ".lines" format. Notebooks created on older firmware keep this format
+# forever, so a v6-only parser silently drops whole notebooks.
+_LEGACY_HEADER_LEN = 43
+_LEGACY_PREFIX = b"reMarkable .lines file, version="
+# v5 line headers carry one extra int32 over v3.
+_LEGACY_LINE_FMT = {3: "<IIIfI", 5: "<IIIfII"}
+_LEGACY_POINT_FMT = "<ffffff"
+
+
+def _legacy_version(data: bytes) -> int | None:
+    """Return 3 or 5 for a pre-v6 blob, else None."""
+    if not data.startswith(_LEGACY_PREFIX):
+        return None
+    try:
+        version = int(data[:_LEGACY_HEADER_LEN].decode("ascii").split("=")[1].strip())
+    except (ValueError, IndexError, UnicodeDecodeError):
+        return None
+    return version if version in _LEGACY_LINE_FMT else None
+
+
+def _parse_legacy(data: bytes, version: int) -> list[si.Line]:
+    """Parse a v3/v5 `.lines` blob into v6-shaped Line objects.
+
+    Coordinates and widths are normalised to the v6 conventions the renderer
+    expects: x is re-centred on 0, and width is scaled by WIDTH_DIVISOR, so
+    everything downstream is version-agnostic.
+    """
+    line_fmt = _LEGACY_LINE_FMT[version]
+    line_size = struct.calcsize(line_fmt)
+    point_size = struct.calcsize(_LEGACY_POINT_FMT)
+
+    offset = _LEGACY_HEADER_LEN
     lines: list[si.Line] = []
-    for block in read_blocks(io.BytesIO(data)):
-        if not isinstance(block, SceneLineItemBlock):
-            continue
-        line = getattr(block.item, "value", None)
-        if line is None:  # a tombstone - the stroke was deleted
-            continue
+    try:
+        (n_layers,) = struct.unpack_from("<I", data, offset)
+        offset += 4
+        for _ in range(n_layers):
+            (n_lines,) = struct.unpack_from("<I", data, offset)
+            offset += 4
+            for _ in range(n_lines):
+                fields = struct.unpack_from(line_fmt, data, offset)
+                offset += line_size
+                pen_code, colour = fields[0], fields[1]
+                n_points = fields[-1]
+
+                points = []
+                for _ in range(n_points):
+                    x, y, speed, direction, width, pressure = struct.unpack_from(
+                        _LEGACY_POINT_FMT, data, offset
+                    )
+                    offset += point_size
+                    points.append(
+                        si.Point(
+                            x=x - X_OFFSET,           # v6 centres x on 0
+                            y=y,
+                            speed=int(speed),
+                            direction=int(direction),
+                            width=int(width * WIDTH_DIVISOR),
+                            pressure=int(pressure * 255),
+                        )
+                    )
+
+                try:
+                    tool = si.Pen(pen_code)
+                except ValueError:
+                    tool = si.Pen.FINELINER_2
+                try:
+                    color = si.PenColor(colour)
+                except ValueError:
+                    color = si.PenColor.BLACK
+
+                if len(points) >= 2:
+                    lines.append(
+                        si.Line(
+                            color=color,
+                            tool=tool,
+                            points=points,
+                            thickness_scale=1.0,
+                            starting_length=0.0,
+                        )
+                    )
+    except struct.error as exc:
+        # Truncated or unexpected layout: keep whatever parsed cleanly rather
+        # than losing the page outright.
+        logger.warning("Legacy v%d parse stopped early (%s); kept %d line(s)",
+                       version, exc, len(lines))
+    return lines
+
+
+def parse_lines(data: bytes) -> list[si.Line]:
+    """Extract drawable lines from a `.rm` blob, v3/v5 or v6."""
+    legacy = _legacy_version(data)
+    if legacy is not None:
+        logger.info("Parsing legacy .lines v%d page", legacy)
+        candidates = _parse_legacy(data, legacy)
+    else:
+        candidates = []
+        for block in read_blocks(io.BytesIO(data)):
+            if not isinstance(block, SceneLineItemBlock):
+                continue
+            line = getattr(block.item, "value", None)
+            if line is None:  # a tombstone - the stroke was deleted
+                continue
+            candidates.append(line)
+
+    lines: list[si.Line] = []
+    for line in candidates:
         if getattr(line, "tool", None) in SKIP_TOOLS:
             continue
         if len(getattr(line, "points", []) or []) >= 2:

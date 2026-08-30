@@ -63,16 +63,38 @@ def select_documents(items: list[Item], parents: set[str], cfg: Config) -> list[
     return selected
 
 
+def _dedupe(ids: list[str]) -> list[str]:
+    """Preserve first-seen order, drop repeats.
+
+    A page id can legitimately appear more than once in cPages (copied or
+    redirected pages). Without this the same page is rendered and sent to the
+    model several times in one run - duplicated cost, and duplicated commits.
+    """
+    seen: set[str] = set()
+    out: list[str] = []
+    for page_id in ids:
+        if page_id not in seen:
+            seen.add(page_id)
+            out.append(page_id)
+    return out
+
+
 def _ordered_page_ids(content: dict | None) -> list[str]:
     """Page ids in reading order, from the `.content` blob when available."""
     if not content:
         return []
     pages = content.get("cPages", {}).get("pages")
     if isinstance(pages, list):
-        return [p["id"] for p in pages if isinstance(p, dict) and p.get("id")]
+        return _dedupe(
+            [
+                p["id"]
+                for p in pages
+                if isinstance(p, dict) and p.get("id") and not p.get("deleted")
+            ]
+        )
     legacy = content.get("pages")
     if isinstance(legacy, list) and all(isinstance(p, str) for p in legacy):
-        return legacy
+        return _dedupe(legacy)
     return []
 
 
@@ -102,7 +124,7 @@ def diff_pages(
         order = _ordered_page_ids(content)
 
         rm_entries = {e.id[:-3]: e for e in entries if e.id.endswith(".rm")}
-        page_ids = [pid for pid in order if pid in rm_entries] or sorted(rm_entries)
+        page_ids = _dedupe([pid for pid in order if pid in rm_entries]) or sorted(rm_entries)
 
         for index, page_id in enumerate(page_ids):
             entry = rm_entries[page_id]
