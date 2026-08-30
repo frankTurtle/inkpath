@@ -36,6 +36,11 @@ EventBridge Scheduler (every 15 min, business hours)
 
 Nothing in this diagram bills while idle.
 
+**Set `ScheduleTimezone`.** EventBridge Scheduler evaluates cron in UTC by
+default, so the stock `hours 6-23` window lands wherever that falls in your
+local time. In US Eastern it becomes 2am-7pm local: polling while you sleep and
+skipping the entire evening.
+
 ### What a note looks like
 
 ```markdown
@@ -176,6 +181,7 @@ Every knob is a deploy-time parameter — changing one is a redeploy, not a code
 | `AiBaseUrl` | *(empty)* | `direct` only — vendor origin, e.g. `https://api.x.ai` |
 | `BatchMode` | `none` | `none`, `bedrock-batch`, `direct-batch` |
 | `PollSchedule` | `cron(0/15 6-23 * * ? *)` | Skips overnight polls |
+| `ScheduleTimezone` | `UTC` | **Set this to your own IANA zone**, e.g. `America/New_York` |
 | `ScheduleState` | `ENABLED` | Deploy `DISABLED` to provision before secrets exist |
 | `MaxPagesPerRun` | `20` | Bounds cost and the 5-minute timeout |
 | `RenderWidth` | `1400` | Vision cost scales with image size |

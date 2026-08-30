@@ -17,7 +17,7 @@ Metadata:
       - Label: {default: "Batch inference (optional, ~50% cheaper, adds latency)"}
         Parameters: [BatchMode, BatchMinRecords, BatchMaxWaitDays]
       - Label: {default: "Run behaviour and cost guardrails"}
-        Parameters: [PollSchedule, MaxPagesPerRun, RenderWidth, BlankPageThreshold, MinTextLength, DryRun, MonthlyBudgetUsd, AlertEmail]
+        Parameters: [PollSchedule, ScheduleTimezone, MaxPagesPerRun, RenderWidth, BlankPageThreshold, MinTextLength, DryRun, MonthlyBudgetUsd, AlertEmail]
 
 Parameters:
   # ---------------------------------------------------------------- vault ----
@@ -118,6 +118,14 @@ Parameters:
     Type: String
     Default: "cron(0/15 6-23 * * ? *)"
     Description: Skips overnight polls you would never use; keeps logs readable.
+  ScheduleTimezone:
+    Type: String
+    Default: "UTC"
+    Description: >
+      IANA timezone the PollSchedule cron is evaluated in, e.g.
+      America/New_York. EventBridge Scheduler defaults to UTC, which silently
+      shifts an "hours 6-23" window off your actual waking hours - set this to
+      your own timezone or the schedule will run while you sleep.
   MaxPagesPerRun:
     Type: Number
     Default: 20
@@ -371,6 +379,7 @@ Resources:
       Name: !Sub "${AWS::StackName}-poll"
       Description: On-demand poll of reMarkable Cloud. Bills nothing while idle.
       ScheduleExpression: !Ref PollSchedule
+      ScheduleExpressionTimezone: !Ref ScheduleTimezone
       FlexibleTimeWindow: {Mode: "OFF"}
       State: !Ref ScheduleState
       Target:
