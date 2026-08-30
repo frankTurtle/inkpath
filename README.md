@@ -96,7 +96,17 @@ PR, because hooks are opt-in per clone.
 - Bedrock model access enabled for your chosen model in your region
 - A **private** GitHub repo holding your Obsidian vault
 
-### 2. Store the secrets
+### 2. Install dependencies
+
+The helper scripts need the project's runtime dependencies, so create the
+virtualenv before running anything below.
+
+```bash
+python3.13 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+```
+
+### 3. Store the secrets
 
 ```bash
 aws ssm put-parameter --name /rmsync/github-pat --type SecureString \
@@ -109,13 +119,16 @@ Then register the tablet. Get an eight-character code from
 <https://my.remarkable.com/device/desktop/connect> and run:
 
 ```bash
-python scripts/register_device.py --code ABCDEFGH --profile your-aws-profile
+.venv/bin/python scripts/register_device.py --code ABCDEFGH --profile your-aws-profile
 ```
+
+Use `.venv/bin/python`, not a bare `python`: the script imports the same
+`rmsync` package the Lambda runs, so it needs `requests` and `boto3` available.
 
 That writes `/rmsync/remarkable-token` directly to SSM — the token never lands
 in a file.
 
-### 3. Configure and deploy
+### 4. Configure and deploy
 
 ```bash
 cp samconfig.toml.example samconfig.toml
@@ -136,7 +149,7 @@ sam deploy --parameter-overrides ScheduleState=DISABLED DryRun=true
 sam deploy --parameter-overrides ScheduleState=ENABLED DryRun=false
 ```
 
-### 4. Verify
+### 5. Verify
 
 Write a page in the watched folder, sync the tablet, and wait one interval:
 

@@ -21,7 +21,24 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "functions"))
 
-from rmsync.auth import register_device  # noqa: E402
+try:
+    from rmsync.auth import register_device  # noqa: E402
+except ModuleNotFoundError as exc:  # pragma: no cover - operator-facing guidance
+    root = pathlib.Path(__file__).resolve().parents[1]
+    venv_python = root / ".venv" / "bin" / "python"
+    hint = (
+        f"    {venv_python} {' '.join(sys.argv)}"
+        if venv_python.exists()
+        else "    python3 -m venv .venv\n"
+        "    .venv/bin/pip install -r requirements-dev.txt\n"
+        f"    .venv/bin/python {' '.join(sys.argv)}"
+    )
+    sys.exit(
+        f"Missing dependency: {exc.name}\n\n"
+        "This script needs the project's runtime dependencies, which live in the\n"
+        "virtualenv rather than your system Python. Run it with:\n\n"
+        f"{hint}\n"
+    )
 
 
 def main() -> int:
