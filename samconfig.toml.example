@@ -30,6 +30,7 @@ BatchMode=none \
 PollSchedule='cron(0/15 6-23 * * ? *)' \
 MaxPagesPerRun=20 \
 AlertEmail=you@example.com \
+MonthlyBudgetUsd=150 \
 """
 
 [dryrun.deploy.parameters]

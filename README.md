@@ -323,6 +323,20 @@ new pages.
 At ~100 pages/month: Lambda within free tier, S3 under $0.10, SSM $0.00, and
 model inference typically well under $1. Idle months round to zero.
 
+**Sizing the budget alarm.** `MonthlyBudgetUsd` defaults to 5, which is right
+only on an account that runs nothing else. AWS Budgets measure **account-wide**
+cost, not this stack's, so on an account already spending real money a $5 budget
+breaches immediately and alerts forever until you learn to ignore it. Set it
+above your normal spend so it works as a runaway tripwire.
+
+Note also that a direct-provider API key is billed by the vendor, not AWS, so
+no AWS budget can see that spend at all. `MaxPagesPerRun` is the guardrail
+there.
+
+The CloudWatch `Errors` alarm is the one that earns its keep either way: it is
+scoped to this function, and silent failure - pages quietly not syncing - is
+the real risk.
+
 Cost is attributable from logs alone — every run emits a `RUN_SUMMARY` line
 with page counts and token usage.
 
