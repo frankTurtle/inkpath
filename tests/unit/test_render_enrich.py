@@ -521,3 +521,66 @@ def test_inline_mode_omits_related_section():
         doc_id="d", notebook="N", page_index=0, link_mode="inline",
     )
     assert "## Related" not in note.body
+
+
+# ------------------------------------------------------ junk link filtering --
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["P.5", "p.10", "pg 12", "page 3", "Ch. 4", "10", "10.2", "iv", "P.10", "pp 22-24"],
+)
+def test_page_references_are_not_links(target):
+    """A page of book quotes would otherwise mint a note per citation."""
+    from rmsync.enrich import is_junk_link
+
+    assert is_junk_link(target)
+
+
+@pytest.mark.parametrize("target", ["Thoreau", "Via negativa", "Optionality", "Walden"])
+def test_real_concepts_stay_links(target):
+    from rmsync.enrich import is_junk_link
+
+    assert not is_junk_link(target)
+
+
+def test_clean_inline_links_keeps_words_drops_brackets():
+    from rmsync.enrich import clean_inline_links
+
+    out = clean_inline_links("He has no time.[[P.5]] Read [[Thoreau]] now.")
+    assert out == "He has no time.P.5 Read [[Thoreau]] now."
+
+
+def test_clean_inline_links_handles_aliases():
+    from rmsync.enrich import clean_inline_links
+
+    assert clean_inline_links("see [[P.5|page five]]") == "see page five"
+
+
+def test_compose_note_strips_page_number_links():
+    note = compose_note(
+        ProviderResult(text="Quote here.[[P.5]] Another quote.[[P.6]] " + "x" * 40,
+                       tags=["t"], title="Walden Quotes"),
+        doc_id="d", notebook="Walden", page_index=0, link_mode="both",
+    )
+    assert "[[P.5]]" not in note.body and "[[P.6]]" not in note.body
+    assert "P.5" in note.body            # the citation text itself survives
+
+
+def test_note_is_not_in_its_own_related_section():
+    """Observed live: a note listed itself under Related."""
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["t"], title="Walden Thoreau Quotes",
+                       links=["Walden Thoreau Quotes", "Other Note"]),
+        doc_id="d", notebook="Walden", page_index=0, link_mode="both",
+    )
+    assert "[[Walden Thoreau Quotes]]" not in note.body
+    assert "[[Other Note]]" in note.body
+
+
+def test_related_drops_junk_targets():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["t"], title="T", links=["P.5", "Real Note"]),
+        doc_id="d", notebook="N", page_index=0, link_mode="both",
+    )
+    assert "[[P.5]]" not in note.body and "[[Real Note]]" in note.body

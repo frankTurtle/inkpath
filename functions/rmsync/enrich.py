@@ -18,6 +18,19 @@ NEEDS_REVIEW_TAG = "needs-review"
 # Below this a title is too generic to autolink safely ("ERE", "p.11").
 MIN_AUTOLINK_LEN = 5
 MAX_AUTOLINKS = 6
+
+# Link targets that are references, not concepts. Left alone, a page of book
+# quotes turns every "p.5" into its own note and floods the graph with stubs.
+_JUNK_LINK_RE = re.compile(
+    r"""^(
+          \d+(\.\d+)?              # 5, 10.2
+        | [ivxlcdm]+                # roman numerals
+        | (p|pg|pp|page|ch|chap|chapter|fig|figure|sec|section)
+          [\s.]*\d+(\s*[-\u2013]\s*\d+)?
+        )$""",
+    re.IGNORECASE | re.VERBOSE,
+)
+MIN_LINK_TARGET_LEN = 4
 SOURCE = "reMarkable"
 _UNSAFE_PATH_RE = re.compile(r"[^A-Za-z0-9 _.\-]")
 
@@ -42,6 +55,31 @@ def sanitize_path_component(raw: str, *, fallback: str = "untitled") -> str:
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" .")
     cleaned = cleaned[:80].strip(" .")
     return cleaned or fallback
+
+
+def is_junk_link(target: str) -> bool:
+    """True for a link target that is a citation or number rather than an idea."""
+    cleaned = target.split("|", 1)[0].strip()
+    if len(cleaned) < MIN_LINK_TARGET_LEN:
+        return True
+    return bool(_JUNK_LINK_RE.match(cleaned))
+
+
+def clean_inline_links(text: str) -> str:
+    """Unwrap [[links]] the model created around page references.
+
+    The brackets are removed but the words stay, so the sentence is unchanged -
+    only the spurious link disappears.
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        target = match.group(1)
+        if is_junk_link(target):
+            # Keep the display text, drop the link.
+            return target.split("|", 1)[-1]
+        return match.group(0)
+
+    return re.sub(r"\[\[([^\]]+)\]\]", _replace, text)
 
 
 def autolink(text: str, titles: list[str], *, max_links: int = MAX_AUTOLINKS) -> str:
@@ -143,7 +181,7 @@ def compose_note(
 
     title = result.title.strip() or f"{notebook} p{page_index + 1}"
 
-    body_text = result.text.strip()
+    body_text = clean_inline_links(result.text.strip())
     if link_mode in ("inline", "both") and known_titles:
         # Never link a note to itself.
         others = [t for t in known_titles if t != title]
@@ -157,15 +195,21 @@ def compose_note(
         parts.append(body_text + "\n")
     if attach and attachment_name:
         parts.append(f"\n![[{attachment_name}]]\n")
-    if result.links and link_mode in ("related", "both"):
-        links = " ".join(f"[[{link}]]" for link in result.links)
+    # A note must never appear in its own Related list.
+    related = [
+        link
+        for link in result.links
+        if link.strip().lower() != title.strip().lower() and not is_junk_link(link)
+    ]
+    if related and link_mode in ("related", "both"):
+        links = " ".join(f"[[{link}]]" for link in related)
         parts.append(f"\n## Related\n\n{links}\n")
 
     return Note(
         title=title,
         body="".join(parts),
         tags=tags,
-        links=result.links,
+        links=related,
         needs_review=needs_review,
         attach_png=attach,
         input_tokens=result.input_tokens,
