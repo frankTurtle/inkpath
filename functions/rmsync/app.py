@@ -158,6 +158,13 @@ class Runner:
             )
         return self._vault
 
+    def _collection_for(self, vault_dir: str) -> str:
+        """Top-level folder a note lands in, used as its collection hub."""
+        if not self.cfg.link_collection:
+            return ""
+        head = (vault_dir or "").strip("/").split("/")[0]
+        return head
+
     def provider_for(self, link_mode: str = "") -> providers.VisionProvider:
         """Provider bound to a specific link mode.
 
@@ -307,6 +314,7 @@ class Runner:
                     known_titles=st.get("noteTitles", []),
                     link_notebook=self.cfg.link_notebook,
                     title_strip_pattern=self.cfg.title_strip_pattern,
+                    collection=self._collection_for(page.vault_dir),
                 )
                 self.stats["inputTokens"] += note.input_tokens
                 self.stats["outputTokens"] += note.output_tokens
@@ -397,6 +405,7 @@ class Runner:
             known_titles=st.get("noteTitles", []),
             link_notebook=self.cfg.link_notebook,
             title_strip_pattern=self.cfg.title_strip_pattern,
+            collection=self._collection_for(record.get("vault_dir", "")),
         )
         self.commit_note(
             st,

@@ -688,3 +688,26 @@ def test_compose_note_uses_stripped_title_for_heading():
     assert note.title == "January 1 2019"
     assert "# January 1 2019" in note.body
     assert "Journal Entry" not in note.body
+
+
+# ------------------------------------------------------- collection hub --
+
+
+def test_collection_property_is_a_wikilink():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="Walden", collection="Book Notes")
+    assert yaml.safe_load(fm.split("---")[1])["collection"] == "[[Book Notes]]"
+
+
+def test_collection_absent_when_not_requested():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="Walden")
+    assert "collection" not in yaml.safe_load(fm.split("---")[1])
+
+
+def test_two_tier_hubs_note_to_notebook_to_collection():
+    """note -> [[Walden]] -> [[Book Notes]] makes the folder one cluster."""
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["t"], title="T"),
+        doc_id="d", notebook="Walden", page_index=0,
+        link_notebook=True, collection="Book Notes",
+    )
+    assert "[[Walden]]" in note.body and "[[Book Notes]]" in note.body

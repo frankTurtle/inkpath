@@ -284,3 +284,15 @@ def test_dry_run_never_opens_a_pr(wired, monkeypatch):
     _pr_wired(monkeypatch, wired, vault)
     app_mod.run({}, _cfg(commit_mode="pull-request", dry_run=True))
     assert vault.calls == []
+
+
+def test_collection_derived_from_route_top_level(wired):
+    r = app_mod.Runner(_cfg(link_collection=True))
+    assert r._collection_for("Book Notes/Walden") == "Book Notes"
+    assert r._collection_for("Journals/2021") == "Journals"
+    assert r._collection_for("") == ""
+
+
+def test_collection_off_by_default(wired):
+    r = app_mod.Runner(_cfg())
+    assert r._collection_for("Book Notes/Walden") == ""

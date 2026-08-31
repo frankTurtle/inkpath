@@ -143,6 +143,7 @@ def build_frontmatter(
     notebook: str,
     created: str | None = None,
     link_notebook: bool = False,
+    collection: str = "",
 ) -> str:
     """YAML frontmatter Obsidian renders as properties.
 
@@ -168,6 +169,10 @@ def build_frontmatter(
         "rm_notebook": f"[[{notebook}]]" if link_notebook and notebook else notebook,
         "created": created_value,
     }
+    if collection:
+        # A hub above the notebook: every book note points at [[Book Notes]],
+        # so the folder is one connected cluster rather than isolated islands.
+        data["collection"] = f"[[{collection}]]"
     body = yaml.safe_dump(
         data, sort_keys=False, allow_unicode=True, default_flow_style=None
     )
@@ -187,6 +192,7 @@ def compose_note(
     known_titles: list[str] | None = None,
     link_notebook: bool = False,
     title_strip_pattern: str = "",
+    collection: str = "",
 ) -> Note:
     """Assemble frontmatter + body from a provider result."""
     # Sanitize here too, not only in parse_response: composition is the last
@@ -228,6 +234,7 @@ def compose_note(
             notebook=notebook,
             created=created,
             link_notebook=link_notebook,
+            collection=collection,
         )
     ]
     parts.append(f"\n# {title}\n\n")

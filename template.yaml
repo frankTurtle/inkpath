@@ -127,6 +127,15 @@ Parameters:
       Render the rm_notebook property as a [[wikilink]], making each notebook a
       hub note its pages point at. Turns a folder of unlinked entries from
       scattered silos in the graph into one cluster per notebook.
+  LinkCollection:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Add a "collection" property linking to the top-level destination folder,
+      e.g. [[Book Notes]]. Combined with LinkNotebook this gives two tiers -
+      note -> notebook -> collection - so a folder reads as one connected
+      cluster in the graph instead of separate islands.
   TitleStripPattern:
     Type: String
     Default: ""
@@ -279,6 +288,7 @@ Resources:
           LINK_MODE: !Ref LinkMode
           LINK_NOTEBOOK: !Ref LinkNotebook
           TITLE_STRIP_PATTERN: !Ref TitleStripPattern
+          LINK_COLLECTION: !Ref LinkCollection
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

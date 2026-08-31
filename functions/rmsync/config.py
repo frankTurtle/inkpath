@@ -57,6 +57,7 @@ class Config:
     link_mode: str = "related"
     link_notebook: bool = False
     title_strip_pattern: str = ""
+    link_collection: bool = False
 
     batch_mode: str = "none"
     batch_min_records: int = 100
@@ -103,6 +104,7 @@ class Config:
             link_mode=os.environ.get("LINK_MODE", "related").strip(),
             link_notebook=_bool("LINK_NOTEBOOK", False),
             title_strip_pattern=os.environ.get("TITLE_STRIP_PATTERN", ""),
+            link_collection=_bool("LINK_COLLECTION", False),
             batch_mode=os.environ.get("BATCH_MODE", "none").strip(),
             batch_min_records=_int("BATCH_MIN_RECORDS", 100),
             batch_max_wait_days=_int("BATCH_MAX_WAIT_DAYS", 14),
