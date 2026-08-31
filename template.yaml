@@ -127,6 +127,14 @@ Parameters:
       Render the rm_notebook property as a [[wikilink]], making each notebook a
       hub note its pages point at. Turns a folder of unlinked entries from
       scattered silos in the graph into one cluster per notebook.
+  TitleStripPattern:
+    Type: String
+    Default: ""
+    Description: >
+      Regex removed from the start of generated note titles, e.g.
+      "^Journal Entry" turns "Journal Entry January 1 2019" into
+      "January 1 2019". The containing folder usually carries that context
+      already, and shorter titles make the graph view far more readable.
   BatchMode:
     Type: String
     Default: none
@@ -270,6 +278,7 @@ Resources:
           AI_BASE_URL: !Ref AiBaseUrl
           LINK_MODE: !Ref LinkMode
           LINK_NOTEBOOK: !Ref LinkNotebook
+          TITLE_STRIP_PATTERN: !Ref TitleStripPattern
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

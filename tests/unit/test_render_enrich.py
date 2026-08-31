@@ -640,3 +640,51 @@ def test_compose_note_threads_link_notebook_through():
 def test_empty_notebook_is_not_linked():
     fm = build_frontmatter(tags=["a"], doc_id="d", notebook="", link_notebook=True)
     assert "[[]]" not in fm
+
+
+# ------------------------------------------------------------ title strip --
+
+
+@pytest.mark.parametrize(
+    "title,expected",
+    [
+        ("Journal Entry January 1 2019", "January 1 2019"),
+        ("Journal Entry - May 3-4 2146", "May 3-4 2146"),
+        ("journal entry April 24 2023", "April 24 2023"),
+        ("January 1 2019", "January 1 2019"),          # already clean
+        ("Walden Thoreau Quotes", "Walden Thoreau Quotes"),
+    ],
+)
+def test_strip_title_removes_prefix(title, expected):
+    from rmsync.enrich import strip_title
+
+    assert strip_title(title, r"^Journal Entry") == expected
+
+
+def test_strip_title_never_empties_a_title():
+    from rmsync.enrich import strip_title
+
+    assert strip_title("Journal Entry", r"^Journal Entry") == "Journal Entry"
+
+
+def test_strip_title_ignores_invalid_regex():
+    from rmsync.enrich import strip_title
+
+    assert strip_title("Journal Entry X", "[unclosed") == "Journal Entry X"
+
+
+def test_strip_title_noop_without_pattern():
+    from rmsync.enrich import strip_title
+
+    assert strip_title("Journal Entry X", "") == "Journal Entry X"
+
+
+def test_compose_note_uses_stripped_title_for_heading():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["journal"], title="Journal Entry January 1 2019"),
+        doc_id="d", notebook="Journal 2021", page_index=0,
+        title_strip_pattern=r"^Journal Entry",
+    )
+    assert note.title == "January 1 2019"
+    assert "# January 1 2019" in note.body
+    assert "Journal Entry" not in note.body

@@ -19,6 +19,29 @@ NEEDS_REVIEW_TAG = "needs-review"
 MIN_AUTOLINK_LEN = 5
 MAX_AUTOLINKS = 6
 
+
+def strip_title(title: str, pattern: str) -> str:
+    """Remove a boilerplate prefix from a model-generated title.
+
+    "Journal Entry January 1 2019" -> "January 1 2019". The folder already says
+    these are journals, so the prefix only makes titles long and repetitive -
+    and long labels are what clutter the graph view.
+
+    Done in code rather than by prompt: the model reintroduces a prefix
+    whenever it feels descriptive, and a title that changes shape moves the
+    file it names.
+    """
+    if not pattern or not title:
+        return title
+    try:
+        cleaned = re.sub(pattern, "", title, count=1, flags=re.IGNORECASE).strip()
+    except re.error:
+        logger.warning("TitleStripPattern %r is not a valid regex; ignoring", pattern)
+        return title
+    cleaned = cleaned.strip(" -\u2013:\u2014")
+    # Never strip a title down to nothing.
+    return cleaned or title
+
 # Link targets that are references, not concepts. Left alone, a page of book
 # quotes turns every "p.5" into its own note and floods the graph with stubs.
 _JUNK_LINK_RE = re.compile(
@@ -163,6 +186,7 @@ def compose_note(
     link_mode: str = "related",
     known_titles: list[str] | None = None,
     link_notebook: bool = False,
+    title_strip_pattern: str = "",
 ) -> Note:
     """Assemble frontmatter + body from a provider result."""
     # Sanitize here too, not only in parse_response: composition is the last
@@ -187,7 +211,9 @@ def compose_note(
     if not tags:
         tags = [NEEDS_REVIEW_TAG]
 
-    title = result.title.strip() or f"{notebook} p{page_index + 1}"
+    title = strip_title(result.title.strip(), title_strip_pattern) or (
+        f"{notebook} p{page_index + 1}"
+    )
 
     body_text = clean_inline_links(result.text.strip())
     if link_mode in ("inline", "both") and known_titles:

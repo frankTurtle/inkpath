@@ -306,6 +306,7 @@ class Runner:
                     link_mode=page.link_mode or self.cfg.link_mode,
                     known_titles=st.get("noteTitles", []),
                     link_notebook=self.cfg.link_notebook,
+                    title_strip_pattern=self.cfg.title_strip_pattern,
                 )
                 self.stats["inputTokens"] += note.input_tokens
                 self.stats["outputTokens"] += note.output_tokens
@@ -395,6 +396,7 @@ class Runner:
             link_mode=self.cfg.link_mode,
             known_titles=st.get("noteTitles", []),
             link_notebook=self.cfg.link_notebook,
+            title_strip_pattern=self.cfg.title_strip_pattern,
         )
         self.commit_note(
             st,
