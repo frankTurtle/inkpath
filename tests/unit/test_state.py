@@ -123,3 +123,51 @@ def test_corrupt_state_raises_rather_than_resyncing_everything(fake_s3):
     fake_s3.store["state.json"] = b"{not json"
     with pytest.raises(ValueError):
         state_mod.load_state("test-bucket")
+
+
+def test_capped_run_does_not_mark_a_long_notebook_complete():
+    """The stall bug: a 152-page notebook was marked done after the first
+    capped run of 20, and the other 132 pages were never fetched again."""
+    st = state_mod.empty_state()
+    for i in range(20):
+        state_mod.record_page(
+            st, doc_id="d", doc_hash="dh", notebook="Journal 2021",
+            page_id=f"p{i}", page_hash=f"h{i}", note_path=f"{i}.md",
+            status=state_mod.STATUS_COMMITTED, timestamp="t",
+            doc_page_count=152,
+        )
+    assert st["docs"]["d"].get("hash") is None, "document must not look finished"
+
+
+def test_hash_advances_once_every_page_is_committed():
+    st = state_mod.empty_state()
+    for i in range(3):
+        state_mod.record_page(
+            st, doc_id="d", doc_hash="dh", notebook="N",
+            page_id=f"p{i}", page_hash=f"h{i}", note_path=f"{i}.md",
+            status=state_mod.STATUS_COMMITTED, timestamp="t", doc_page_count=3,
+        )
+    assert st["docs"]["d"]["hash"] == "dh"
+
+
+def test_a_skipped_page_keeps_the_document_open():
+    """A page that errored is never recorded, so counting recorded pages alone
+    would call the document finished and never retry it."""
+    st = state_mod.empty_state()
+    for i in range(9):
+        state_mod.record_page(
+            st, doc_id="d", doc_hash="dh", notebook="N",
+            page_id=f"p{i}", page_hash=f"h{i}", note_path=f"{i}.md",
+            status=state_mod.STATUS_COMMITTED, timestamp="t", doc_page_count=10,
+        )
+    assert st["docs"]["d"].get("hash") is None
+
+
+def test_pending_batch_page_keeps_the_document_open():
+    st = state_mod.empty_state()
+    state_mod.record_page(
+        st, doc_id="d", doc_hash="dh", notebook="N", page_id="p1", page_hash="h1",
+        note_path="", status=state_mod.STATUS_PENDING_BATCH, timestamp="t",
+        doc_page_count=1,
+    )
+    assert st["docs"]["d"].get("hash") is None

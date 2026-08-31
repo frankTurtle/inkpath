@@ -218,6 +218,7 @@ class Runner:
         page_hash: str,
         page_index: int,
         vault_dir: str,
+        doc_page_count: int = 0,
         note,
         png: bytes | None,
     ) -> None:
@@ -264,6 +265,7 @@ class Runner:
             note_path=path,
             status=state_mod.STATUS_COMMITTED,
             timestamp=_now_iso(),
+            doc_page_count=doc_page_count,
         )
         state_mod.learn_vocabulary(
             st, note.tags, note.title, self._collection_for(vault_dir)
@@ -294,6 +296,7 @@ class Runner:
                         note_path="",
                         status=state_mod.STATUS_COMMITTED,
                         timestamp=_now_iso(),
+                        doc_page_count=page.doc_page_count,
                     )
                     continue
 
@@ -334,6 +337,7 @@ class Runner:
                     page_hash=page.page_hash,
                     page_index=page.page_index,
                     vault_dir=page.vault_dir,
+                    doc_page_count=page.doc_page_count,
                     note=note,
                     png=png,
                 )

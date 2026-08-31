@@ -29,6 +29,7 @@ class PageRef:
     # folder it came from (see routes.py).
     vault_dir: str = ""
     link_mode: str = ""
+    doc_page_count: int = 0
     data: bytes = field(default=b"", repr=False)
 
     def __post_init__(self) -> None:
@@ -182,6 +183,7 @@ def diff_pages(
                     file_name=entry.id,
                     vault_dir=dest,
                     link_mode=page_link_mode,
+                    doc_page_count=len(page_ids),
                 )
             )
 

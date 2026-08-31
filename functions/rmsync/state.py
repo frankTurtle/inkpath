@@ -160,6 +160,7 @@ def record_page(
     note_path: str,
     status: str,
     timestamp: str,
+    doc_page_count: int = 0,
 ) -> None:
     doc = state.setdefault("docs", {}).setdefault(doc_id, {"pages": {}})
     doc["notebook"] = notebook
@@ -174,7 +175,17 @@ def record_page(
     # interrupted run resumes the remaining pages on the next poll. Setting it
     # early would make the diff fast-path skip the whole document and silently
     # lose every page that had not been processed yet.
-    if all(p.get("status") == STATUS_COMMITTED for p in doc["pages"].values()):
+    #
+    # CRITICAL: compare against the document's REAL page count, not the pages
+    # recorded so far. Judging completeness from recorded pages alone marks a
+    # 152-page notebook finished the moment the first capped run of 20 lands,
+    # and the remaining 132 are never fetched again - the sync stalls with no
+    # error and no log line. The same applies when a page errors and is skipped.
+    committed = sum(
+        1 for p in doc["pages"].values() if p.get("status") == STATUS_COMMITTED
+    )
+    total = max(doc_page_count, len(doc["pages"]))
+    if committed >= total:
         doc["hash"] = doc_hash
     else:
         doc.pop("hash", None)
