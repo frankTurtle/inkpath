@@ -97,8 +97,26 @@ def test_vocabulary_dedupes():
     st = state_mod.empty_state()
     state_mod.learn_vocabulary(st, ["a", "b", "a"], "Title")
     state_mod.learn_vocabulary(st, ["b", "c"], "Title")
-    assert st["tagVocabulary"] == ["a", "b", "c"]
+    assert state_mod.tags_for(st) == ["a", "b", "c"]
     assert st["noteTitles"] == ["Title"]
+
+
+def test_vocabulary_is_scoped_per_collection():
+    """A shared vocabulary tags diary pages with a book's marketing terms."""
+    st = state_mod.empty_state()
+    state_mod.learn_vocabulary(st, ["marketing"], "T", "Book Notes")
+    state_mod.learn_vocabulary(st, ["parenting"], "T", "Journals")
+    assert state_mod.tags_for(st, "Book Notes") == ["marketing"]
+    assert state_mod.tags_for(st, "Journals") == ["parenting"]
+
+
+def test_legacy_flat_vocabulary_still_readable():
+    """State written before scoping must keep working after an upgrade."""
+    st = state_mod.empty_state()
+    st["tagVocabulary"] = ["old", "tags"]
+    assert state_mod.tags_for(st, "Book Notes") == ["old", "tags"]
+    state_mod.learn_vocabulary(st, ["new"], "T", "Book Notes")
+    assert "new" in state_mod.tags_for(st, "Book Notes")
 
 
 def test_corrupt_state_raises_rather_than_resyncing_everything(fake_s3):

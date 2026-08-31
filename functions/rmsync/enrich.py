@@ -193,11 +193,18 @@ def compose_note(
     link_notebook: bool = False,
     title_strip_pattern: str = "",
     collection: str = "",
+    exclude_tags: list[str] | None = None,
 ) -> Note:
     """Assemble frontmatter + body from a provider result."""
     # Sanitize here too, not only in parse_response: composition is the last
     # gate before frontmatter, and an Obsidian tag containing a space is invalid.
     tags = sanitize_tags(result.tags)
+    # Drop tags that merely restate the folder: "journal" on everything under
+    # Journals/ carries nothing the path and collection hub do not already say,
+    # and adds a graph node duplicating the hub.
+    banned = {t.strip().lower() for t in (exclude_tags or []) if t.strip()}
+    if banned:
+        tags = [t for t in tags if t.lower() not in banned]
     needs_review = result.needs_review
     attach = False
 

@@ -67,7 +67,7 @@ def empty_state() -> dict[str, Any]:
     return {
         "version": STATE_VERSION,
         "docs": {},
-        "tagVocabulary": [],
+        "tagVocabulary": {},
         "noteTitles": [],
         "batch": {"queue": [], "pendingJobs": []},
     }
@@ -206,14 +206,38 @@ def claimed_paths(state: dict[str, Any], *, excluding: tuple[str, str] | None = 
     return taken
 
 
-def learn_vocabulary(state: dict[str, Any], tags: list[str], title: str | None) -> None:
+def tags_for(state: dict[str, Any], collection: str = "") -> list[str]:
+    """Tag vocabulary for one collection.
+
+    Scoped per collection because a single shared vocabulary cross-contaminates:
+    offered a book's marketing tags while transcribing a diary page, the model
+    dutifully reuses them, and journal entries end up tagged "psychographics".
+    """
+    vocab = state.get("tagVocabulary") or {}
+    if isinstance(vocab, list):        # legacy flat vocabulary
+        return list(vocab)
+    scoped = list(vocab.get(collection, []))
+    # Fall back to the legacy bucket so an upgraded deployment keeps its history.
+    return scoped or list(vocab.get("", []))
+
+
+def learn_vocabulary(
+    state: dict[str, Any],
+    tags: list[str],
+    title: str | None,
+    collection: str = "",
+) -> None:
     """Grow the tag/title vocabulary so the model reuses tags instead of
     inventing near-duplicates."""
-    vocab: list[str] = state.setdefault("tagVocabulary", [])
+    vocab = state.get("tagVocabulary") or {}
+    if isinstance(vocab, list):        # migrate legacy flat list
+        vocab = {"": vocab}
+    bucket: list[str] = list(vocab.get(collection, []))
     for tag in tags:
-        if tag and tag not in vocab:
-            vocab.append(tag)
-    state["tagVocabulary"] = vocab[-MAX_TAG_VOCABULARY:]
+        if tag and tag not in bucket:
+            bucket.append(tag)
+    vocab[collection] = bucket[-MAX_TAG_VOCABULARY:]
+    state["tagVocabulary"] = vocab
 
     titles: list[str] = state.setdefault("noteTitles", [])
     if title and title not in titles:

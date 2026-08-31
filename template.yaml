@@ -136,6 +136,13 @@ Parameters:
       e.g. [[Book Notes]]. Combined with LinkNotebook this gives two tiers -
       note -> notebook -> collection - so a folder reads as one connected
       cluster in the graph instead of separate islands.
+  ExcludeTags:
+    Type: String
+    Default: ""
+    Description: >
+      Comma-separated tags the model is never allowed to apply, e.g. "journal".
+      A tag matching the folder every note already lives in adds no information
+      and clutters the graph with a node duplicating the collection hub.
   TitleStripPattern:
     Type: String
     Default: ""
@@ -289,6 +296,7 @@ Resources:
           LINK_NOTEBOOK: !Ref LinkNotebook
           TITLE_STRIP_PATTERN: !Ref TitleStripPattern
           LINK_COLLECTION: !Ref LinkCollection
+          EXCLUDE_TAGS: !Ref ExcludeTags
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

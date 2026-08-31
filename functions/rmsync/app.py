@@ -265,7 +265,9 @@ class Runner:
             status=state_mod.STATUS_COMMITTED,
             timestamp=_now_iso(),
         )
-        state_mod.learn_vocabulary(st, note.tags, note.title)
+        state_mod.learn_vocabulary(
+            st, note.tags, note.title, self._collection_for(vault_dir)
+        )
 
     # ------------------------------------------------------- sync pipeline --
 
@@ -299,8 +301,11 @@ class Runner:
                 attachment = sanitize_path_component(
                     f"{page.notebook} p{page.page_index + 1}", fallback="page"
                 )
+                collection = self._collection_for(page.vault_dir)
                 result = self.provider_for(page.link_mode).extract_and_tag(
-                    png, st.get("tagVocabulary", []), st.get("noteTitles", [])
+                    png,
+                    state_mod.tags_for(st, collection),
+                    st.get("noteTitles", []),
                 )
                 self.stats["modelCalls"] += 1
                 note = compose_note(
@@ -314,7 +319,8 @@ class Runner:
                     known_titles=st.get("noteTitles", []),
                     link_notebook=self.cfg.link_notebook,
                     title_strip_pattern=self.cfg.title_strip_pattern,
-                    collection=self._collection_for(page.vault_dir),
+                    collection=collection,
+                    exclude_tags=self.cfg.exclude_tags,
                 )
                 self.stats["inputTokens"] += note.input_tokens
                 self.stats["outputTokens"] += note.output_tokens
@@ -394,6 +400,7 @@ class Runner:
         attachment = sanitize_path_component(
             f"{record['notebook']} p{record['page_index'] + 1}", fallback="page"
         )
+        collection = self._collection_for(record.get("vault_dir", ""))
         note = compose_note(
             result,
             doc_id=record["doc_id"],
@@ -405,7 +412,8 @@ class Runner:
             known_titles=st.get("noteTitles", []),
             link_notebook=self.cfg.link_notebook,
             title_strip_pattern=self.cfg.title_strip_pattern,
-            collection=self._collection_for(record.get("vault_dir", "")),
+            collection=collection,
+            exclude_tags=self.cfg.exclude_tags,
         )
         self.commit_note(
             st,

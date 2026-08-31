@@ -711,3 +711,32 @@ def test_two_tier_hubs_note_to_notebook_to_collection():
         link_notebook=True, collection="Book Notes",
     )
     assert "[[Walden]]" in note.body and "[[Book Notes]]" in note.body
+
+
+# ------------------------------------------------------------ tag denylist --
+
+
+def test_excluded_tags_are_dropped():
+    """A tag restating the folder adds nothing the path and hub do not."""
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["journal", "parenting"], title="T"),
+        doc_id="d", notebook="Journal 2021", page_index=0,
+        exclude_tags=["journal"],
+    )
+    assert note.tags == ["parenting"]
+
+
+def test_exclusion_is_case_insensitive():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["Journal"], title="T"),
+        doc_id="d", notebook="N", page_index=0, exclude_tags=["journal"],
+    )
+    assert "Journal" not in note.tags
+
+
+def test_excluding_every_tag_still_yields_a_usable_note():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["journal"], title="T"),
+        doc_id="d", notebook="N", page_index=0, exclude_tags=["journal"],
+    )
+    assert note.tags == ["needs-review"]   # never emit an untagged note

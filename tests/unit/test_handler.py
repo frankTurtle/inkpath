@@ -69,7 +69,7 @@ def test_happy_path_commits_and_records_state(page_rm):
     assert rec["status"] == state_mod.STATUS_COMMITTED
     assert r.stats["commits"] == 1 and r.stats["modelCalls"] == 1
     # Vocabulary grows so later pages reuse tags instead of inventing them.
-    assert "book-notes" in st["tagVocabulary"]
+    assert "book-notes" in state_mod.tags_for(st, "")
 
 
 def test_state_not_written_on_commit_failure(page_rm):

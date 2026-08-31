@@ -58,6 +58,7 @@ class Config:
     link_notebook: bool = False
     title_strip_pattern: str = ""
     link_collection: bool = False
+    exclude_tags: list[str] = field(default_factory=list)
 
     batch_mode: str = "none"
     batch_min_records: int = 100
@@ -105,6 +106,7 @@ class Config:
             link_notebook=_bool("LINK_NOTEBOOK", False),
             title_strip_pattern=os.environ.get("TITLE_STRIP_PATTERN", ""),
             link_collection=_bool("LINK_COLLECTION", False),
+            exclude_tags=_csv("EXCLUDE_TAGS"),
             batch_mode=os.environ.get("BATCH_MODE", "none").strip(),
             batch_min_records=_int("BATCH_MIN_RECORDS", 100),
             batch_max_wait_days=_int("BATCH_MAX_WAIT_DAYS", 14),
