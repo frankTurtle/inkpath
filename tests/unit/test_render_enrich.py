@@ -603,3 +603,40 @@ def test_none_mode_prompt_forbids_new_brackets():
     p = build_prompt([], ["X"], "none")
     assert "Do NOT add" in p and "Always return []" in p
     assert "INLINE LINKS" not in p
+
+
+# -------------------------------------------------------- notebook hub link --
+
+
+def test_notebook_property_can_be_a_wikilink():
+    """Makes each notebook a hub node its pages point at."""
+    fm = build_frontmatter(
+        tags=["a"], doc_id="d", notebook="Journal 2021", link_notebook=True
+    )
+    assert "rm_notebook: '[[Journal 2021]]'" in fm
+
+
+def test_notebook_wikilink_is_quoted_so_yaml_stays_a_string():
+    """A bare [[x]] parses as a nested list, not a link."""
+    fm = build_frontmatter(
+        tags=["a"], doc_id="d", notebook="Journal 2021", link_notebook=True
+    )
+    assert yaml.safe_load(fm.split("---")[1])["rm_notebook"] == "[[Journal 2021]]"
+
+
+def test_notebook_property_plain_by_default():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="Journal 2021")
+    assert yaml.safe_load(fm.split("---")[1])["rm_notebook"] == "Journal 2021"
+
+
+def test_compose_note_threads_link_notebook_through():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=["t"], title="T"),
+        doc_id="d", notebook="Journal 2021", page_index=0, link_notebook=True,
+    )
+    assert "[[Journal 2021]]" in note.body
+
+
+def test_empty_notebook_is_not_linked():
+    fm = build_frontmatter(tags=["a"], doc_id="d", notebook="", link_notebook=True)
+    assert "[[]]" not in fm

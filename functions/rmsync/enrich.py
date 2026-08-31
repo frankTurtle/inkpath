@@ -119,8 +119,14 @@ def build_frontmatter(
     doc_id: str,
     notebook: str,
     created: str | None = None,
+    link_notebook: bool = False,
 ) -> str:
-    """YAML frontmatter Obsidian renders as properties."""
+    """YAML frontmatter Obsidian renders as properties.
+
+    With `link_notebook`, rm_notebook becomes a [[wikilink]], which makes each
+    notebook a hub note that its pages point at. Without it, a folder of
+    unlinked entries shows up in the graph as scattered silos.
+    """
     # A real date object, not a string: yaml.safe_dump quotes strings, and a
     # quoted 'created' reads as a plain string in Obsidian rather than a date.
     if created:
@@ -135,7 +141,8 @@ def build_frontmatter(
         "tags": tags,
         "source": SOURCE,
         "rm_doc_id": doc_id,
-        "rm_notebook": notebook,
+        # Quoted by safe_dump: a bare [[x]] is a nested YAML list, not a string.
+        "rm_notebook": f"[[{notebook}]]" if link_notebook and notebook else notebook,
         "created": created_value,
     }
     body = yaml.safe_dump(
@@ -155,6 +162,7 @@ def compose_note(
     created: str | None = None,
     link_mode: str = "related",
     known_titles: list[str] | None = None,
+    link_notebook: bool = False,
 ) -> Note:
     """Assemble frontmatter + body from a provider result."""
     # Sanitize here too, not only in parse_response: composition is the last
@@ -188,7 +196,13 @@ def compose_note(
         body_text = autolink(body_text, others)
 
     parts = [
-        build_frontmatter(tags=tags, doc_id=doc_id, notebook=notebook, created=created)
+        build_frontmatter(
+            tags=tags,
+            doc_id=doc_id,
+            notebook=notebook,
+            created=created,
+            link_notebook=link_notebook,
+        )
     ]
     parts.append(f"\n# {title}\n\n")
     if body_text:

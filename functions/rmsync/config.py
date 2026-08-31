@@ -55,6 +55,7 @@ class Config:
     ai_model_id: str = ""
     ai_base_url: str = ""
     link_mode: str = "related"
+    link_notebook: bool = False
 
     batch_mode: str = "none"
     batch_min_records: int = 100
@@ -99,6 +100,7 @@ class Config:
             ai_model_id=os.environ.get("AI_MODEL_ID", "").strip(),
             ai_base_url=os.environ.get("AI_BASE_URL", "").strip(),
             link_mode=os.environ.get("LINK_MODE", "related").strip(),
+            link_notebook=_bool("LINK_NOTEBOOK", False),
             batch_mode=os.environ.get("BATCH_MODE", "none").strip(),
             batch_min_records=_int("BATCH_MIN_RECORDS", 100),
             batch_max_wait_days=_int("BATCH_MAX_WAIT_DAYS", 14),

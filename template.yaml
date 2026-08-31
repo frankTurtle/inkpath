@@ -13,7 +13,7 @@ Metadata:
       - Label: {default: "reMarkable scoping"}
         Parameters: [WatchFolder, WatchFolderId, IncludeNotebooks, ExcludeNotebooks]
       - Label: {default: "AI provider"}
-        Parameters: [AiProvider, AiModelId, AiBaseUrl, LinkMode, BedrockModelArnPattern]
+        Parameters: [AiProvider, AiModelId, AiBaseUrl, LinkMode, LinkNotebook, BedrockModelArnPattern]
       - Label: {default: "Batch inference (optional, ~50% cheaper, adds latency)"}
         Parameters: [BatchMode, BatchMinRecords, BatchMaxWaitDays]
       - Label: {default: "Run behaviour and cost guardrails"}
@@ -119,6 +119,14 @@ Parameters:
       [[wikilinks]] to existing notes. "inline" instead wraps key concepts in
       [[brackets]] inside the text itself. "both" does each. Hand-drawn [[ ]]
       on the page are always preserved regardless of this setting.
+  LinkNotebook:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Render the rm_notebook property as a [[wikilink]], making each notebook a
+      hub note its pages point at. Turns a folder of unlinked entries from
+      scattered silos in the graph into one cluster per notebook.
   BatchMode:
     Type: String
     Default: none
@@ -261,6 +269,7 @@ Resources:
           AI_MODEL_ID: !Ref AiModelId
           AI_BASE_URL: !Ref AiBaseUrl
           LINK_MODE: !Ref LinkMode
+          LINK_NOTEBOOK: !Ref LinkNotebook
           BATCH_MODE: !Ref BatchMode
           BATCH_MIN_RECORDS: !Ref BatchMinRecords
           BATCH_MAX_WAIT_DAYS: !Ref BatchMaxWaitDays

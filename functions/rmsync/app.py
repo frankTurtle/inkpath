@@ -305,6 +305,7 @@ class Runner:
                     attachment_name=f"{attachment}.png",
                     link_mode=page.link_mode or self.cfg.link_mode,
                     known_titles=st.get("noteTitles", []),
+                    link_notebook=self.cfg.link_notebook,
                 )
                 self.stats["inputTokens"] += note.input_tokens
                 self.stats["outputTokens"] += note.output_tokens
@@ -393,6 +394,7 @@ class Runner:
             attachment_name=f"{attachment}.png",
             link_mode=self.cfg.link_mode,
             known_titles=st.get("noteTitles", []),
+            link_notebook=self.cfg.link_notebook,
         )
         self.commit_note(
             st,
