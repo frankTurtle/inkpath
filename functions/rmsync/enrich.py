@@ -203,6 +203,10 @@ def compose_note(
     # Journals/ carries nothing the path and collection hub do not already say,
     # and adds a graph node duplicating the hub.
     banned = {t.strip().lower() for t in (exclude_tags or []) if t.strip()}
+    # Whether the model produced anything usable, judged BEFORE the denylist:
+    # a note left tagless purely because its only tag was excluded is fine, and
+    # must not be confused with one the model could not tag at all.
+    model_tagged = bool(tags)
     if banned:
         tags = [t for t in tags if t.lower() not in banned]
     needs_review = result.needs_review
@@ -221,7 +225,9 @@ def compose_note(
 
     if needs_review and NEEDS_REVIEW_TAG not in tags:
         tags.append(NEEDS_REVIEW_TAG)
-    if not tags:
+    if not tags and not model_tagged:
+        # The model returned no tags at all - worth a human look. An empty list
+        # after exclusion is deliberate and left alone.
         tags = [NEEDS_REVIEW_TAG]
 
     title = strip_title(result.title.strip(), title_strip_pattern) or (

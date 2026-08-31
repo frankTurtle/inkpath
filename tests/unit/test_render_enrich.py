@@ -734,9 +734,19 @@ def test_exclusion_is_case_insensitive():
     assert "Journal" not in note.tags
 
 
-def test_excluding_every_tag_still_yields_a_usable_note():
+def test_exclusion_emptying_tags_is_not_needs_review():
+    """needs-review means the OCR looks wrong. A note left tagless because its
+    only tag was on the denylist is deliberate, and must not raise that flag."""
     note = compose_note(
         ProviderResult(text="x" * 60, tags=["journal"], title="T"),
         doc_id="d", notebook="N", page_index=0, exclude_tags=["journal"],
     )
-    assert note.tags == ["needs-review"]   # never emit an untagged note
+    assert note.tags == []
+
+
+def test_model_returning_no_tags_still_flags_review():
+    note = compose_note(
+        ProviderResult(text="x" * 60, tags=[], title="T"),
+        doc_id="d", notebook="N", page_index=0,
+    )
+    assert note.tags == ["needs-review"]
